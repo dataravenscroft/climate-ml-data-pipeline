@@ -1,0 +1,104 @@
+.venv/
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# ── Virtual environments ───────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# ── Jupyter ────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+# Uncomment to ignore all notebooks:
+# *.ipynb
+
+# ── Climate / scientific data ──────────────────────────────────
+*.nc
+*.nc4
+*.h5
+*.hdf5
+*.grib
+*.grib2
+*.grb
+*.grb2
+
+# Zarr stores (directories — git can't handle them well)
+*.zarr/
+
+# Large numpy/pickle dumps
+*.npy
+*.npz
+*.pkl
+*.pickle
+
+# ── ML / PyTorch ───────────────────────────────────────────────
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+runs/
+wandb/
+mlruns/
+lightning_logs/
+
+# ── Logs & profiling ───────────────────────────────────────────
+*.log
+*.out
+logs/
+*.prof
+*.lprof
+
+# ── OS / editor ────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── Secrets / credentials ──────────────────────────────────────
+.env
+.env.local
+*.pem
+*.key
+secrets/
+credentials.json
+service_account.json
+
+# ── GCP / cloud ────────────────────────────────────────────────
+.gcloud/
+gcp_credentials/
+
+# ── Misc output ────────────────────────────────────────────────
+output/
+outputs/
+figures/
+*.pdf
+*.png
+*.jpg
+# (remove *.png if you want to commit plots/diagrams)
+
