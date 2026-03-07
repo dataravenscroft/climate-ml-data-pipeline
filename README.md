@@ -130,6 +130,12 @@ See [DISTRIBUTED_TRAINING.md](DISTRIBUTED_TRAINING.md) for multi-node
 setup and full launch commands.
 
 ---
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Run pipeline
+python era5_pipeline.py
 
 ## Climate Data Pipeline
 
