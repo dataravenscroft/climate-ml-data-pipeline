@@ -125,42 +125,26 @@ print(subset["leaf_area_index_high_vegetation"])
 
 print("\n── Step 2: Writing local chunked Zarr ──")
 
-# Chunking strategy:
-# - one time step per chunk
-# - full spatial extent for each sample
 chunks = {"time": 1, "lat": -1, "lon": -1}
 subset_chunked = subset.chunk(chunks)
 
-encoding = {
-    var: {
-        "compressors": ZstdCodec(level=5),
-        "chunks": [1, subset.sizes["lat"], subset.sizes["lon"]],
-        "dtype": "float32",
-    }
-    for var in subset.data_vars
-}
+if os.path.exists(LOCAL_ZARR_PATH):
+    import shutil
+    shutil.rmtree(LOCAL_ZARR_PATH)
 
 t0 = time.time()
 subset_chunked.to_zarr(
     LOCAL_ZARR_PATH,
     mode="w",
     consolidated=True,
-    encoding=encoding,
 )
 elapsed = time.time() - t0
+
 print(f"Wrote local Zarr: {LOCAL_ZARR_PATH} ({elapsed:.2f}s)")
 
 ds_local = xr.open_zarr(LOCAL_ZARR_PATH, consolidated=True)
 print(f"Reloaded local Zarr dims: {dict(ds_local.sizes)}")
 print(f"Chunks for 2m_temperature: {dict(ds_local['2m_temperature'].chunksizes)}")
-
-store = zarr.open(LOCAL_ZARR_PATH)
-arr = store["2m_temperature"]
-print("\nZarr array info:")
-print(f"  Shape:       {arr.shape}")
-print(f"  Chunks:      {arr.chunks}")
-print(f"  Dtype:       {arr.dtype}")
-print(f"  Compressors: {arr.compressors}")
 
 
 # -----------------------------------------------------------------------------
