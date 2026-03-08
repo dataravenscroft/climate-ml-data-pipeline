@@ -135,6 +135,13 @@ import os
 import shutil
 import time
 
+# Clear inherited encodings from source Zarr
+subset = subset.drop_encoding()
+for var in subset.data_vars:
+    subset[var].encoding = {}
+for coord in subset.coords:
+    subset[coord].encoding = {}
+
 chunks = {"time": 1, "lat": -1, "lon": -1}
 subset_chunked = subset.chunk(chunks)
 
@@ -150,7 +157,6 @@ subset_chunked.to_zarr(
 elapsed = time.time() - t0
 
 print(f"Wrote local Zarr: {LOCAL_ZARR_PATH} ({elapsed:.2f}s)")
-
 
 # -----------------------------------------------------------------------------
 # 3. REGRID WITH xESMF
