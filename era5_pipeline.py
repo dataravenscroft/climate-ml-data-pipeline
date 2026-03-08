@@ -76,7 +76,7 @@ print("=" * 72)
 # 1. OPEN REAL ERA5 AND SUBSET
 # -----------------------------------------------------------------------------
 
-print("\n── Step 1: Opening real ARCO ERA5 dataset ──")
+print("\n── Step 1: Opening ARCO ERA5 dataset ──")
 
 ds = xr.open_zarr(
     ARCO_ERA5_PATH,
@@ -118,18 +118,27 @@ print(subset["2m_temperature"])
 print(subset["volumetric_soil_water_layer_1"])
 print(subset["leaf_area_index_high_vegetation"])
 
+# Right before Step 2, clear the inherited encodings:
+subset = subset.drop_encoding()
 
+for var in subset.data_vars:
+    subset[var].encoding = {}
+for coord in subset.coords:
+    subset[coord].encoding = {}
 # -----------------------------------------------------------------------------
 # 2. WRITE LOCAL ZARR
 # -----------------------------------------------------------------------------
 
 print("\n── Step 2: Writing local chunked Zarr ──")
 
+import os
+import shutil
+import time
+
 chunks = {"time": 1, "lat": -1, "lon": -1}
 subset_chunked = subset.chunk(chunks)
 
 if os.path.exists(LOCAL_ZARR_PATH):
-    import shutil
     shutil.rmtree(LOCAL_ZARR_PATH)
 
 t0 = time.time()
@@ -141,10 +150,6 @@ subset_chunked.to_zarr(
 elapsed = time.time() - t0
 
 print(f"Wrote local Zarr: {LOCAL_ZARR_PATH} ({elapsed:.2f}s)")
-
-ds_local = xr.open_zarr(LOCAL_ZARR_PATH, consolidated=True)
-print(f"Reloaded local Zarr dims: {dict(ds_local.sizes)}")
-print(f"Chunks for 2m_temperature: {dict(ds_local['2m_temperature'].chunksizes)}")
 
 
 # -----------------------------------------------------------------------------
