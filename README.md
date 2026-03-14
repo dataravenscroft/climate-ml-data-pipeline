@@ -21,6 +21,38 @@ variables: **Z500** (geopotential height), **T850** (temperature),
 
 ---
 
+## Repository Structure
+
+```
+climate-ml-data-pipeline/
+├── pipeline/                    # importable package
+│   ├── data/
+│   │   ├── era5.py              # ARCO ERA5 open/subset, Dask config, config constants
+│   │   ├── zarr_store.py        # write_local_zarr
+│   │   ├── regrid.py            # xESMF bilinear regridding
+│   │   ├── dataset.py           # ERA5Dataset (zarr-backed, for real data)
+│   │   └── synthetic.py        # SyntheticERA5Dataset + make_era5_dataset
+│   ├── models/
+│   │   └── convlstm.py          # ConvLSTMCell + ConvLSTMForecast
+│   └── training/
+│       └── distributed.py       # DDP utilities + training/validation loops
+├── scripts/
+│   ├── run_pipeline.py          # entry point: python scripts/run_pipeline.py
+│   └── train.py                 # entry point: torchrun scripts/train.py
+├── notebooks/
+│   ├── era5_annotated.ipynb     # step-by-step annotated pipeline walkthrough
+│   └── era5_exploration.ipynb   # exploratory analysis
+├── docs/
+│   ├── ERA5_WORKFLOW_SETUP.md   # setup and run instructions
+│   └── DISTRIBUTED_TRAINING.md  # DDP setup, launch commands, speedup results
+├── data/                        # gitignored — zarr stores written here
+├── references/
+│   └── GraphCast_Google_2023.pdf
+└── requirements.txt
+```
+
+---
+
 ## Architecture
 
 ```
@@ -48,51 +80,81 @@ move eastward and cold fronts have characteristic spatial shapes.
 
 ---
 
-## Files
-
-| File | Description |
-|---|---|
-| `train_distributed.py` | ConvLSTM model + PyTorch DDP distributed training |
-| `era5_workflow.py` | Full ERA5 data pipeline: xarray → zarr → regrid → Dask → cloud |
-| `DISTRIBUTED_TRAINING.md` | DDP setup, launch commands, speedup results |
-
----
-
 ## Quickstart
 
 ### 1. Install
 
 ```bash
-pip install torch xarray zarr dask distributed xesmf \
-            numpy netCDF4 s3fs gcsfs numcodecs
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 > xESMF may require conda on some systems:
 > `conda install -c conda-forge xesmf`
 
-### 2. Run the data pipeline
+### 2. Run the data pipeline (real ARCO ERA5)
 
 ```bash
-python era5_workflow.py
+python scripts/run_pipeline.py
 ```
 
 This will:
-- Build a synthetic ERA5-like xarray Dataset (Z500, T850, U10, V10)
-- Convert to chunked zarr with Blosc/zstd compression
-- Regrid to multiple resolutions using xESMF (bilinear + conservative)
-- Run a Dask parallel preprocessing pipeline
+- Open ARCO ERA5 lazily from public GCS (no credentials needed)
+- Subset to CONUS, 2 weeks of hourly data
+- Write local zarr with ML-optimized chunking (`{time: 1, lat: -1, lon: -1}`)
+- Regrid to 1° using xESMF bilinear interpolation
+- Compute Dask parallel temporal statistics
 - Connect the zarr store to a PyTorch DataLoader
 
 ### 3. Train (single GPU)
 
 ```bash
-torchrun --nproc_per_node=1 train_distributed.py --epochs 10
+torchrun --nproc_per_node=1 scripts/train.py --epochs 10
 ```
 
 ### 4. Train (multi-GPU)
 
 ```bash
-torchrun --nproc_per_node=2 train_distributed.py --epochs 10
+torchrun --nproc_per_node=2 scripts/train.py --epochs 10
+```
+
+See [docs/DISTRIBUTED_TRAINING.md](docs/DISTRIBUTED_TRAINING.md) for multi-node setup.
+
+---
+
+## Climate Data Pipeline
+
+The pipeline implements the standard Earth-2 / Pangeo toolchain:
+
+**xarray** — labelled N-D arrays with CF-convention coordinates.
+Supports `sel` / `isel` by coordinate value, weighted spatial means,
+and direct zarr I/O.
+
+**zarr** — chunked, compressed cloud-native storage. Chunks of
+`{time: 1, lat: -1, lon: -1}` optimize for ML sample access.
+Zarr v3 default zstd compression achieves ~3–5x ratio on float32 atmospheric fields.
+
+**xESMF** — conservative and bilinear regridding between grid
+resolutions. Conservative method preserves area-averaged quantities
+(critical for precipitation, flux fields). Used to move between ERA5
+native 0.25°, FourCastNet 0.25°, and ClimaX 5.625° grids.
+
+**Dask** — lazy parallel computation for terabyte-scale datasets.
+Builds task graphs without loading data, executes chunk-by-chunk.
+Enables full ERA5 preprocessing on a laptop. Threaded scheduler
+(`dask.config.set(scheduler='threads')`) is preferred over `LocalCluster`
+on M1/8GB — lower overhead, no port conflicts.
+
+**Cloud storage** — zarr stores read/written identically whether local,
+`gs://` (GCS), or `s3://` (AWS). Real ERA5 available via Pangeo:
+
+```python
+ds = xr.open_zarr(
+    "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3",
+    storage_options={"token": "anon"},
+    chunks={"time": 1},
+)
 ```
 
 ---
@@ -126,49 +188,6 @@ Epoch  10/10 | Train Loss: 0.01017 | Val Loss: 0.01017 | Time: 0.9s
 Training complete. Best val loss: 0.01017
 ```
 
-See [DISTRIBUTED_TRAINING.md](DISTRIBUTED_TRAINING.md) for multi-node
-setup and full launch commands.
-
----
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Run pipeline
-python era5_pipeline.py
-
-## Climate Data Pipeline
-
-`era5_workflow.py` implements the standard Earth-2 / Pangeo toolchain:
-
-**xarray** — labelled N-D arrays with CF-convention coordinates.
-Supports `sel` / `isel` by coordinate value, weighted spatial means,
-and direct zarr I/O.
-
-**zarr** — chunked, compressed cloud-native storage. Chunks of
-`{time: 1, lat: -1, lon: -1}` optimize for ML sample access.
-Blosc/zstd compression achieves ~3–5x ratio on float32 atmospheric fields.
-
-**xESMF** — conservative and bilinear regridding between grid
-resolutions. Conservative method preserves area-averaged quantities
-(critical for precipitation, flux fields). Used to move between ERA5
-native 0.25°, FourCastNet 0.25°, and ClimaX 5.625° grids.
-
-**Dask** — lazy parallel computation for terabyte-scale datasets.
-Builds task graphs without loading data, executes chunk-by-chunk.
-Enables full ERA5 preprocessing on a laptop.
-
-**Cloud storage** — zarr stores read/written identically whether local,
-`gs://` (GCS), or `s3://` (AWS). Real ERA5 available via Pangeo:
-
-```python
-ds = xr.open_zarr(
-    "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3",
-    storage_options={"token": "anon"},
-    chunks={"time": 1},
-)
-```
-
 ---
 
 ## Variables
@@ -182,6 +201,9 @@ ds = xr.open_zarr(
 
 These are the standard benchmark variables used in FourCastNet,
 Pangu-Weather, and NVIDIA PhysicsNeMo evaluations.
+
+The pipeline also supports ERA5 surface/land variables:
+`2m_temperature`, `volumetric_soil_water_layer_1`, `leaf_area_index_high_vegetation`.
 
 ---
 
