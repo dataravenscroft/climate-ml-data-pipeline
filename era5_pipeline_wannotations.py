@@ -27,16 +27,16 @@ Run:
 
 from __future__ import annotations
 
-import os
-import shutil
-import time
-import warnings
-from typing import Sequence
+import os #Operating system interface. File paths, environment variables, directory operations:
+import shutil #Higher-level file operations that os doesn't cover
+import time #timing and pausing
+import warnings #control warning messages from libraries
+from typing import Sequence # Type hint for "any ordered collection" — list, tuple, numpy array, etc.:
 
 import numpy as np
-import torch
-import xarray as xr
-import dask
+import torch #the ML framework. Tensors, autograd, neural network primitives. Everything in your training loop runs through here:
+import xarray as xr #Labeled multi-dimensional arrays — numpy but every dimension has a name and coordinate values.
+import dask #Parallel and lazy computation. Your zarr data is chunked — dask represents operations on it as a graph of tasks that only execute when you c
 from torch.utils.data import DataLoader, Dataset
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -55,8 +55,8 @@ VARIABLES = [
 ]
 
 # Small time window for local dev — expand when you have more disk
-TIME_START = "2020-01-01"
-TIME_END   = "2020-01-14"   # 2 weeks = 336 hourly timesteps
+TIME_START = "2020-06-01"
+TIME_END   = "2020-06-14"   # 2 weeks = 336 hourly timesteps
 
 # CONUS bounding box (ERA5 uses 0–360 longitude)
 LAT_MAX =  50.0
@@ -417,7 +417,7 @@ def build_dataloader(zarr_path: str) -> DataLoader:
 
 def main() -> None:
     print("=" * 68)
-    print("ERA5 Climate Pipeline — M1 MacBook (8GB)")
+    print("ERA5 Climate Pipeline")
     print("=" * 68)
 
     make_dask_client()
