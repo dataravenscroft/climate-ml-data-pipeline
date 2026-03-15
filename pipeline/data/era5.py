@@ -36,13 +36,16 @@ LOCAL_REGRID_PATH = "data/era5_subset_1deg.zarr"
 # ─── DASK ──────────────────────────────────────────────────────────────────────
 
 def make_dask_client():
-    """Configure Dask threaded scheduler — optimized for M1/8GB.
+    """Configure Dask threaded scheduler — tuned for M2/32GB.
 
-    Threaded scheduler avoids LocalCluster subprocess overhead and port
-    conflicts. Threads release the GIL for numpy/zarr I/O so parallelism works.
+    Threaded scheduler is preferred over LocalCluster for this workload:
+    threads release the GIL for numpy/zarr I/O so parallelism works, and
+    there's no subprocess/port overhead. 8 workers matches M2 performance
+    cores. LocalCluster + dashboard (localhost:8787) is an option if you
+    want task-graph visibility, but adds ~500MB overhead.
     """
-    dask.config.set(scheduler="threads", num_workers=4)
-    print("  Dask scheduler: threaded (4 workers, no LocalCluster)")
+    dask.config.set(scheduler="threads", num_workers=8)
+    print("  Dask scheduler: threaded (8 workers, M2/32GB)")
     return None
 
 

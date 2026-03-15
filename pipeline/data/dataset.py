@@ -67,8 +67,8 @@ class ERA5Dataset(Dataset):
 def build_dataloader(zarr_path: str) -> DataLoader:
     """Build a DataLoader from a local zarr store using default variables.
 
-    num_workers=0: safest on M1 — avoids fork-related memory issues.
-    For faster loading: num_workers=2, persistent_workers=True.
+    num_workers=4: M2/32GB can handle multiprocess workers without OOM.
+    persistent_workers=True: keeps worker processes alive between epochs.
     pin_memory=False: only helps with CUDA, not MPS.
     """
     print("\n── Step 5: PyTorch DataLoader ──")
@@ -92,7 +92,8 @@ def build_dataloader(zarr_path: str) -> DataLoader:
         dataset,
         batch_size=4,
         shuffle=True,
-        num_workers=0,
+        num_workers=4,
+        persistent_workers=True,
         pin_memory=False,
     )
 
