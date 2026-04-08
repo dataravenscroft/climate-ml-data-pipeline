@@ -37,8 +37,9 @@ climate-ml-data-pipeline/
 │   └── training/
 │       └── distributed.py       # DDP utilities + training/validation loops
 ├── scripts/
-│   ├── run_pipeline.py          # entry point: python scripts/run_pipeline.py
-│   └── train.py                 # entry point: torchrun scripts/train.py
+│   ├── run_pipeline.py                        # entry point: python scripts/run_pipeline.py
+│   ├── pipeline_2_arcgridAML_currenttooling.py  # northeast US water stress pipeline (gridMET + ERA5)
+│   └── train.py                               # entry point: torchrun scripts/train.py
 ├── notebooks/
 │   ├── era5_annotated.ipynb     # step-by-step annotated pipeline walkthrough
 │   └── era5_exploration.ipynb   # exploratory analysis
@@ -50,6 +51,58 @@ climate-ml-data-pipeline/
 │   └── GraphCast_Google_2023.pdf
 └── requirements.txt
 ```
+
+---
+
+## ConvLSTM Forward Pass
+
+The core architectural insight: **the T dimension exists only in the input tensor, then disappears.**
+
+```
+Input:  x  →  shape (N, T, C, H, W)
+              N = batch windows
+              T = timesteps (6-hour ERA5 frames)
+              C = atmospheric variables
+              H = latitude grid points
+              W = longitude grid points
+```
+
+Inside `ConvLSTMCell.forward()`, a loop strips T away one frame at a time:
+
+```python
+for t in range(T):
+    inp = x[:, t]          # (N, C, H, W) — T is gone
+    h, c = self.cell(inp, h, c)
+```
+
+Conv2d never sees the T dimension. Temporal information is carried across steps
+by the state tensors `h` (hidden/working) and `c` (cell/long-term memory),
+both with shape `(N, hidden_channels, H, W)`.
+
+### Gate equations (per spatial location, across H×W via Conv2d)
+
+```
+f = sigmoid(W_f * [h_prev, inp])   # forget — how much of c to keep
+i = sigmoid(W_i * [h_prev, inp])   # input  — how much new info to write
+o = sigmoid(W_o * [h_prev, inp])   # output — how much of c to expose
+g = tanh(W_g * [h_prev, inp])      # candidate cell value
+
+c = f ⊙ c_prev + i ⊙ g            # long-term memory update
+h = o ⊙ tanh(c)                   # working state
+```
+
+The `*` is Conv2d, not matrix multiply — that's the "Conv" in ConvLSTM.
+Each gate is a **spatial field**, not a scalar. A cold front appears as a
+low-forget *region* in the f field across H×W.
+
+### Gate behaviour in climate terms
+
+| Gate | What it does | Climate example |
+|------|-------------|-----------------|
+| Forget (f) | How much of c to keep | Cold front arrives → f drops to ~0.2, wipes prior baseline |
+| Input (i)  | How much new info to write | Abrupt regime change → i spikes to ~0.95 |
+| Output (o) | How much of c to expose via h | Final timestep → o high, exposes state for forecast |
+| Cell (g)   | New candidate value | Current temperature anomaly |
 
 ---
 
@@ -107,7 +160,24 @@ This will:
 - Compute Dask parallel temporal statistics
 - Connect the zarr store to a PyTorch DataLoader
 
-### 3. Train (single GPU)
+### 3. Run the northeast US water stress pipeline
+
+```bash
+python scripts/pipeline_2_arcgridAML_currenttooling.py
+```
+
+This will:
+- Fetch daily precipitation and temperature for northeast US from **gridMET** (~4 km, no auth)
+  via public OPeNDAP (`thredds.northwestknowledge.net`)
+- Load ERA5 surface variables from the local zarr store (`data/zarr/era5_real_subset.zarr`)
+- Compute a water stress index: `stress = max(0, -(precip - 1.2 × temp))`
+- Save result to `data/water_stress.nc`
+
+**Dependencies:** `pip install donfig && pip install "zarr>=3"`
+
+---
+
+### 4. Train (single GPU)
 
 ```bash
 torchrun --nproc_per_node=1 scripts/train.py --epochs 10
