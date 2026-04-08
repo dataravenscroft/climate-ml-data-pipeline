@@ -299,8 +299,3 @@ observed atmospheric trajectories. Same spatial structure, same variables,
 - [NVIDIA PhysicsNeMo](https://github.com/NVIDIA/physicsnemo) — Framework this work targets
 - [NVIDIA Earth2Studio](https://github.com/NVIDIA/earth2studio) — Inference and evaluation
 
----
-
-## License
-
-MIT
