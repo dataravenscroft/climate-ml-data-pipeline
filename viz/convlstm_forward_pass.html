@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ConvLSTM Forward Pass — Cold Front Gate Dynamics</title>
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, 'Segoe UI', sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 24px;
+        }
+        h1 { color: #58a6ff; font-size: 22px; margin-bottom: 4px; }
+        .subtitle { color: #8b949e; font-size: 14px; margin-bottom: 24px; }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+            background: #161b22;
+            padding: 14px 20px;
+            border-radius: 8px;
+            border: 1px solid #30363d;
+        }
+        #playBtn {
+            background: #1f6feb;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        #playBtn:hover { background: #388bfd; }
+        input[type=range] { width: 260px; accent-color: #58a6ff; }
+        .t-label {
+            color: #58a6ff;
+            font-family: monospace;
+            font-size: 16px;
+            font-weight: bold;
+            min-width: 50px;
+        }
+        .hint { color: #484f58; font-size: 13px; }
+
+        .annotation-box {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            display: flex;
+            gap: 40px;
+        }
+        .ann-section { flex: 1; }
+        .ann-title {
+            color: #f0883e;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 8px;
+        }
+        .ann-body { color: #c9d1d9; font-size: 14px; line-height: 1.65; }
+
+        .gate-values { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+        .gate-chip {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-family: monospace;
+            font-weight: 700;
+        }
+        .f-chip { background: #1f3a5f; color: #79c0ff; }
+        .i-chip { background: #3d1f1f; color: #ff7b72; }
+        .o-chip { background: #1f3a2a; color: #56d364; }
+        .g-chip { background: #2d2a1f; color: #e3b341; }
+
+        #plots {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        .plot-wrap {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .plot-label {
+            padding: 8px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #8b949e;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .eq-tag {
+            font-family: monospace;
+            font-size: 11px;
+            color: #58a6ff;
+            background: #1f2a3a;
+            padding: 2px 7px;
+            border-radius: 4px;
+        }
+        .footer {
+            margin-top: 16px;
+            color: #484f58;
+            font-size: 12px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<h1>ConvLSTM Forward Pass — Cold Front Gate Dynamics</h1>
+<p class="subtitle">
+    Northeast US domain &nbsp;·&nbsp; T = 6 timesteps &nbsp;·&nbsp;
+    each gate is a spatial field over H×W computed via Conv2d, not a scalar
+</p>
+
+<div class="controls">
+    <button id="playBtn">▶ Play</button>
+    <input type="range" id="slider" min="0" max="5" value="0" step="1">
+    <span class="t-label" id="tLabel">t = 0</span>
+    <span class="hint">← drag slider or press Play</span>
+</div>
+
+<div class="annotation-box">
+    <div class="ann-section">
+        <div class="ann-title">What's happening at this timestep</div>
+        <div class="ann-body" id="annText">
+            Cold air mass approaching from the west. Warm baseline fills the domain.
+            Gates in cruise state — forget gate high (preserve memory), input gate low (no regime change yet).
+        </div>
+    </div>
+    <div class="ann-section">
+        <div class="ann-title">Gate values at frontal boundary</div>
+        <div class="gate-values">
+            <span class="gate-chip f-chip" id="fVal">f ≈ 0.88</span>
+            <span class="gate-chip i-chip" id="iVal">i ≈ 0.12</span>
+            <span class="gate-chip o-chip" id="oVal">o ≈ 0.45</span>
+            <span class="gate-chip g-chip" id="gVal">g ≈ −0.05</span>
+        </div>
+    </div>
+</div>
+
+<div id="plots">
+    <div class="plot-wrap">
+        <div class="plot-label">
+            Temperature &nbsp; x<sub>t</sub>
+            <span class="eq-tag">input frame t &nbsp;(°C)</span>
+        </div>
+        <div id="plot-temp"></div>
+    </div>
+    <div class="plot-wrap">
+        <div class="plot-label">
+            Forget gate &nbsp; f
+            <span class="eq-tag">σ(W_f ★ [h, x])</span>
+        </div>
+        <div id="plot-f"></div>
+    </div>
+    <div class="plot-wrap">
+        <div class="plot-label">
+            Input gate &nbsp; i
+            <span class="eq-tag">σ(W_i ★ [h, x])</span>
+        </div>
+        <div id="plot-i"></div>
+    </div>
+    <div class="plot-wrap">
+        <div class="plot-label">
+            Cell candidate &nbsp; g
+            <span class="eq-tag">tanh(W_g ★ [h, x])</span>
+        </div>
+        <div id="plot-g"></div>
+    </div>
+    <div class="plot-wrap">
+        <div class="plot-label">
+            Cell state &nbsp; c
+            <span class="eq-tag">f ⊙ c_prev + i ⊙ g</span>
+        </div>
+        <div id="plot-c"></div>
+    </div>
+    <div class="plot-wrap">
+        <div class="plot-label">
+            Hidden state &nbsp; h &nbsp;(output)
+            <span class="eq-tag">o ⊙ tanh(c)</span>
+        </div>
+        <div id="plot-h"></div>
+    </div>
+</div>
+
+<div class="footer">
+    ★ denotes Conv2d (not matrix multiply) — gates are spatial fields, not scalars &nbsp;|&nbsp;
+    github.com/dataravenscroft/climate-ml-data-pipeline
+</div>
+
+<script>
+// ── Synthetic data generation ─────────────────────────────────────────────────
+const H = 18, W = 36, T_STEPS = 6;
+
+function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
+
+function generateData() {
+    const steps = [];
+    // initial cell state: all zeros  (N, hidden, H, W) — here hidden=1 for display
+    let c_prev = Array.from({length: H}, () => new Array(W).fill(0));
+
+    for (let t = 0; t < T_STEPS; t++) {
+        // Front position: moves west→east, arrives at western cells earliest
+        const front_col = W * (t + 0.8) / T_STEPS;
+
+        const temp = [], f = [], ig = [], g = [], c = [], h = [], og = [];
+
+        for (let row = 0; row < H; row++) {
+            temp.push([]); f.push([]); ig.push([]); g.push([]);
+            c.push([]); h.push([]); og.push([]);
+
+            for (let col = 0; col < W; col++) {
+                // Signed distance from front (positive = warm/ahead, negative = cold/behind)
+                const d = (col - front_col) / (W * 0.12);
+
+                // Spatial texture: topographic and mesoscale variability
+                const topo = Math.sin(row * 0.7) * Math.cos(col * 0.4) * 1.2;
+                const meso = Math.sin(row * 0.3 + col * 0.2) * 0.8;
+
+                // Temperature: warm ahead of front, cold behind
+                const t_val = 14 + 12 * sigmoid(d * 1.8) + topo + meso;
+                temp[row].push(+t_val.toFixed(2));
+
+                // Forget gate: HIGH ahead (keep warm baseline), LOW behind (wipe it)
+                const f_val = Math.max(0.05, Math.min(0.97, sigmoid(d * 2.5 + 1.2)));
+                f[row].push(+f_val.toFixed(3));
+
+                // Input gate: LOW ahead, HIGH at and behind front (write cold air info)
+                const i_val = Math.max(0.03, Math.min(0.97, sigmoid(-d * 2.5 + 1.0)));
+                ig[row].push(+i_val.toFixed(3));
+
+                // Cell candidate: encodes cold anomaly (negative = colder than baseline)
+                const g_val = Math.tanh(-(t_val - 14) * 0.25);
+                g[row].push(+g_val.toFixed(3));
+
+                // Output gate: increases over time, peaks at final timestep
+                const o_val = 0.45 + 0.35 * (t / (T_STEPS - 1));
+                og[row].push(+o_val.toFixed(3));
+
+                // Cell state update: c = f * c_prev + i * g
+                const c_val = f_val * c_prev[row][col] + i_val * g_val;
+                c[row].push(+c_val.toFixed(3));
+
+                // Hidden state: h = o * tanh(c)
+                const h_val = o_val * Math.tanh(c_val);
+                h[row].push(+h_val.toFixed(3));
+            }
+        }
+
+        c_prev = c;
+        steps.push({ temp, f, i: ig, g, c, h, o: og });
+    }
+    return steps;
+}
+
+const DATA = generateData();
+
+// ── Per-timestep annotations ──────────────────────────────────────────────────
+const ANNOTATIONS = [
+    {
+        text: "Cold air mass approaching from the west. Warm baseline fills the domain. Gates in cruise state — forget gate high (preserve memory), input gate low (no regime change yet).",
+        f: "f ≈ 0.88", i: "i ≈ 0.12", o: "o ≈ 0.45", g: "g ≈ −0.05"
+    },
+    {
+        text: "Front reaches the western third. Forget gate begins dropping to ~0.2 behind the boundary — the model discards the warm-air baseline. Input gate rising to ~0.78.",
+        f: "f ≈ 0.22", i: "i ≈ 0.78", o: "o ≈ 0.52", g: "g ≈ −0.45"
+    },
+    {
+        text: "Front crossing mid-domain. The low-forget region (blue) expands eastward. Cell state c accumulates cold anomaly where i×g dominates. Warm sector ahead unchanged.",
+        f: "f ≈ 0.18", i: "i ≈ 0.82", o: "o ≈ 0.59", g: "g ≈ −0.52"
+    },
+    {
+        text: "Regime change well underway. Cell state now holds a strong cold-air memory. The forget gate spatial pattern is the neural analogue of a synoptic-scale front on a weather map.",
+        f: "f ≈ 0.16", i: "i ≈ 0.84", o: "o ≈ 0.66", g: "g ≈ −0.58"
+    },
+    {
+        text: "Front entering the eastern third. Output gate rising — model beginning to expose accumulated cell state through h for the final forecast step.",
+        f: "f ≈ 0.14", i: "i ≈ 0.86", o: "o ≈ 0.73", g: "g ≈ −0.60"
+    },
+    {
+        text: "Final timestep. Front has crossed. Output gate high (o ≈ 0.80): h = o ⊙ tanh(c) now exposes the full cold-air memory as the forecast state ŷ passed to the projection head.",
+        f: "f ≈ 0.10", i: "i ≈ 0.90", o: "o ≈ 0.80", g: "g ≈ −0.62"
+    },
+];
+
+// ── Plotly helpers ────────────────────────────────────────────────────────────
+const PLOT_HEIGHT = 195;
+
+const BASE_LAYOUT = {
+    margin: { l: 8, r: 8, t: 8, b: 8 },
+    height: PLOT_HEIGHT,
+    paper_bgcolor: '#161b22',
+    plot_bgcolor: '#161b22',
+    xaxis: { showticklabels: false, showgrid: false, zeroline: false },
+    yaxis: { showticklabels: false, showgrid: false, zeroline: false },
+};
+
+const CS = {
+    temp: 'RdBu_r',
+    f:    [[0, '#1f3a5f'], [0.5, '#8b949e'], [1, '#f0883e']],
+    i:    [[0, '#0d1117'], [0.5, '#388bfd'], [1, '#ff7b72']],
+    g:    'RdBu',
+    c:    'RdBu',
+    h:    'RdBu',
+};
+
+function makePlot(id, z, cs, zmin, zmax) {
+    Plotly.newPlot(id, [{
+        type: 'heatmap', z, colorscale: cs,
+        zmin, zmax, showscale: false,
+    }], BASE_LAYOUT, { displayModeBar: false, responsive: true });
+}
+
+function updatePlots(t) {
+    const d = DATA[t];
+    const up = (id, z, cs, zmin, zmax) =>
+        Plotly.restyle(id, { z: [z], colorscale: [cs], zmin: [zmin], zmax: [zmax] });
+
+    up('plot-temp', d.temp, CS.temp, 2,    26);
+    up('plot-f',    d.f,    CS.f,    0,    1);
+    up('plot-i',    d.i,    CS.i,    0,    1);
+    up('plot-g',    d.g,    CS.g,   -1,    1);
+    up('plot-c',    d.c,    CS.c,   -0.8,  0.8);
+    up('plot-h',    d.h,    CS.h,   -0.6,  0.6);
+
+    document.getElementById('tLabel').textContent = `t = ${t}`;
+    const ann = ANNOTATIONS[t];
+    document.getElementById('annText').textContent = ann.text;
+    document.getElementById('fVal').textContent = ann.f;
+    document.getElementById('iVal').textContent = ann.i;
+    document.getElementById('oVal').textContent = ann.o;
+    document.getElementById('gVal').textContent = ann.g;
+}
+
+// ── Initialise plots ──────────────────────────────────────────────────────────
+const d0 = DATA[0];
+makePlot('plot-temp', d0.temp, CS.temp, 2,    26);
+makePlot('plot-f',    d0.f,   CS.f,    0,    1);
+makePlot('plot-i',    d0.i,   CS.i,    0,    1);
+makePlot('plot-g',    d0.g,   CS.g,   -1,    1);
+makePlot('plot-c',    d0.c,   CS.c,   -0.8,  0.8);
+makePlot('plot-h',    d0.h,   CS.h,   -0.6,  0.6);
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+const slider = document.getElementById('slider');
+slider.addEventListener('input', () => updatePlots(+slider.value));
+
+let playing = false, timer;
+const playBtn = document.getElementById('playBtn');
+
+playBtn.addEventListener('click', () => {
+    if (playing) {
+        clearInterval(timer);
+        playBtn.textContent = '▶ Play';
+        playing = false;
+        return;
+    }
+    playing = true;
+    playBtn.textContent = '⏸ Pause';
+    let t = +slider.value;
+    timer = setInterval(() => {
+        t = (t + 1) % T_STEPS;
+        slider.value = t;
+        updatePlots(t);
+        if (t === T_STEPS - 1) {
+            clearInterval(timer);
+            playing = false;
+            playBtn.textContent = '▶ Play';
+        }
+    }, 950);
+});
+</script>
+</body>
+</html>
