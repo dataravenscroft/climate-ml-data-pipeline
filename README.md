@@ -6,11 +6,6 @@ and a production climate data pipeline (xarray · zarr · dask · xESMF).
 
 ---
 
-## What This Is
-
-A neural surrogate for atmospheric timestep integration —  machine
-learning equivalent of the physical simulation systems. 
-
 The model learns to predict the next 6-hourly atmospheric state from
 6 prior timesteps, operating on a global 32×64 grid of four ERA5
 variables: **Z500** (geopotential height), **T850** (temperature),
@@ -126,7 +121,7 @@ Output: (B, C=4, H=32, W=64)        ← predicted next timestep
 **Why ConvLSTM over standard LSTM:** Standard LSTM flattens the weather
 grid into a vector, destroying spatial relationships. ConvLSTM replaces
 matrix multiplications in the LSTM gates with 3×3 convolutions — the
-grid stays intact throughout, so the model learns that pressure gradients
+grid stays intact throughout, so the model learns spatial processes, e.g. that pressure gradients
 move eastward and cold fronts have characteristic spatial shapes.
 
 ---
@@ -154,7 +149,7 @@ This will:
 - Open ARCO ERA5 lazily from public GCS (no credentials needed)
 - Subset to CONUS, 2 weeks of hourly data
 - Write local zarr with ML-optimized chunking (`{time: 1, lat: -1, lon: -1}`)
-- Regrid to 1° using xESMF bilinear interpolation
+- Regrid to 1° using xESMF bilinear interpolation #having trouble getting a proper envt with this library
 - Compute Dask parallel temporal statistics
 - Connect the zarr store to a PyTorch DataLoader
 
