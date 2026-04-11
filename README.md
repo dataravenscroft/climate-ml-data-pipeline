@@ -37,7 +37,6 @@ climate-ml-data-pipeline/
 │   ├── era5_annotated.ipynb     # step-by-step annotated pipeline walkthrough
 │   └── era5_exploration.ipynb   # exploratory analysis
 ├── docs/
-│   ├── ERA5_WORKFLOW_SETUP.md   # setup and run instructions
 │   └── DISTRIBUTED_TRAINING.md  # DDP setup, launch commands, speedup results
 ├── data/                        # gitignored — zarr stores written here
 ├── references/
