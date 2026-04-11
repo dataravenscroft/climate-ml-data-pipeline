@@ -8,11 +8,8 @@ and a production climate data pipeline (xarray · zarr · dask · xESMF).
 
 ## What This Is
 
-A neural surrogate for atmospheric timestep integration — the machine
-learning equivalent of the physical simulation system I built in 2006
-(GCM netCDF inputs, topographic downscaling, distributed ensemble runs,
-published in *Ecological Applications*). This project connects that
-physical modeling background to modern deep learning tooling.
+A neural surrogate for atmospheric timestep integration —  machine
+learning equivalent of the physical simulation systems. 
 
 The model learns to predict the next 6-hourly atmospheric state from
 6 prior timesteps, operating on a global 32×64 grid of four ERA5
@@ -277,17 +274,7 @@ The pipeline also supports ERA5 surface/land variables:
 
 ---
 
-## Background
 
-In 2006 I built a gridded spatially explicit climate simulation system:
-GCM netCDF inputs, topographic downscaling to 28.5m resolution across
-two IPCC emissions scenarios (A2 and B2), distributed ensemble runs,
-output summarization pipelines. Published in *Ecological Applications*.
-
-This project is the neural surrogate version of that work — replacing
-expensive physical timestep integration with a ConvLSTM trained on
-observed atmospheric trajectories. Same spatial structure, same variables,
-1000× faster at inference time.
 
 ---
 
