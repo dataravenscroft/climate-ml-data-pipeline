@@ -148,7 +148,7 @@ This will:
 - Open ARCO ERA5 lazily from public GCS (no credentials needed)
 - Subset to CONUS, 2 weeks of hourly data
 - Write local zarr with ML-optimized chunking (`{time: 1, lat: -1, lon: -1}`)
-- Regrid to 1° using xESMF bilinear interpolation #having trouble getting a proper envt with this library
+- Regrid to 1° using xESMF bilinear interpolation #Unable to install 
 - Compute Dask parallel temporal statistics
 - Connect the zarr store to a PyTorch DataLoader
 
@@ -200,7 +200,7 @@ Zarr v3 default zstd compression achieves ~3–5x ratio on float32 atmospheric f
 **xESMF** — conservative and bilinear regridding between grid
 resolutions. Conservative method preserves area-averaged quantities
 (critical for precipitation, flux fields). Used to move between ERA5
-native 0.25°, FourCastNet 0.25°, and ClimaX 5.625° grids.
+native 0.25°, FourCastNet 0.25°, and ClimaX 5.625° grids. 
 
 **Dask** — lazy parallel computation for terabyte-scale datasets.
 Builds task graphs without loading data, executes chunk-by-chunk.
