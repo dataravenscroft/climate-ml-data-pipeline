@@ -30,9 +30,8 @@ climate-ml-data-pipeline/
 │       └── distributed.py       # DDP utilities + training/validation loops
 ├── scripts/
 │   ├── run_pipeline.py                        # entry point: python scripts/run_pipeline.py
+│   ├── pipeline_2_arcgridAML_currenttooling.py  # northeast US water stress pipeline (gridMET + ERA5)
 │   └── train.py                               # entry point: torchrun scripts/train.py
-|   ├── review/
-|       └── pipeline_2_arcgridAML_currenttooling.py       # Simple Water Stress Training Fraem - combine DEM and ERA5 eco vars
 ├── notebooks/
 │   ├── era5_annotated.ipynb     # step-by-step annotated pipeline walkthrough
 │   └── era5_exploration.ipynb   # exploratory analysis
@@ -269,6 +268,18 @@ The pipeline also supports ERA5 surface/land variables:
 
 ---
 
+## Background
+What it learns
+Conv2d part → spatial structure
+fronts
+pressure gradients
+terrain effects
+LSTM part → temporal dynamics
+advection
+persistence
+lagged responses
+
+More current AI weather models like FourCastNet  GraphCast largely have moved away from ConvLSTM - conv kernels are local and makes it hard to capture global circulation dynamics. LSTM time steps process, sequential, slow and difficult to scale. 
 
 
 ---
