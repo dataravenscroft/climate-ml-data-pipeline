@@ -35,8 +35,9 @@ climate-ml-data-pipeline/
 │       └── distributed.py       # DDP utilities + training/validation loops
 ├── scripts/
 │   ├── run_pipeline.py                        # entry point: python scripts/run_pipeline.py
-│   ├── pipeline_2_arcgridAML_currenttooling.py  # northeast US water stress pipeline (gridMET + ERA5)
 │   └── train.py                               # entry point: torchrun scripts/train.py
+|   ├── review/
+|       └── pipeline_2_arcgridAML_currenttooling.py       # Simple Water Stress Training Fraem - combine DEM and ERA5 eco vars
 ├── notebooks/
 │   ├── era5_annotated.ipynb     # step-by-step annotated pipeline walkthrough
 │   └── era5_exploration.ipynb   # exploratory analysis
