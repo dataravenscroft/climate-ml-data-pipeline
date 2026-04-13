@@ -73,6 +73,19 @@ class ERA5Dataset(Dataset):
         y = torch.from_numpy(arr[self.seq_len])    # (C, H, W)
         return x, y
 
+    def denormalize_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
+        means = torch.tensor(
+            [self.means[v] for v in self.variables],
+            dtype=tensor.dtype,
+            device=tensor.device,
+        ).view(1, -1, 1, 1)
+        stds = torch.tensor(
+            [self.stds[v] for v in self.variables],
+            dtype=tensor.dtype,
+            device=tensor.device,
+        ).view(1, -1, 1, 1)
+        return tensor * stds + means
+
 
 def build_dataloader(zarr_path: str) -> DataLoader:
     """Build a DataLoader from a local zarr store using default variables.

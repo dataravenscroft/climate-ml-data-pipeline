@@ -158,6 +158,29 @@ When `--data_mode real` is used, `scripts/train.py`:
 - creates sliding windows of length `--seq_len`
 - performs a chronological train/validation split using `--val_fraction`
 - configures the ConvLSTM input and output channels from the selected variable list
+- reports per-variable RMSE during validation
+
+For richer offline evaluation and plots, run:
+
+```bash
+python scripts/evaluate_forecast.py \
+    --checkpoint checkpoints/best_model.pt \
+    --data_mode real \
+    --zarr_path data/era5_subset.zarr \
+    --variables \
+        2m_temperature \
+        10m_u_component_of_wind \
+        10m_v_component_of_wind \
+        temperature_850 \
+        geopotential_500 \
+        volumetric_soil_water_layer_1 \
+        leaf_area_index_high_vegetation \
+        surface_solar_radiation_downwards \
+        total_sky_direct_solar_radiation_at_surface
+```
+
+This saves per-variable RMSE, latitude-weighted RMSE, anomaly correlation, and
+sample forecast comparison plots under `viz/evaluation/`.
 
 The default real-data path is `data/era5_subset.zarr`, which matches the output
 of `scripts/run_pipeline.py`. The current pipeline writes a 9-variable mix of

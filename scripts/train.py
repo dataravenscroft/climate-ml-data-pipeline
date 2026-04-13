@@ -18,12 +18,10 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, DistributedSampler, Subset
+from torch.utils.data import DataLoader, DistributedSampler
 
-from pipeline.data.dataset import ERA5Dataset
-from pipeline.data.era5 import LOCAL_ZARR_PATH, VARIABLES as REAL_VARIABLES
-from pipeline.data.synthetic import SyntheticERA5Dataset
 from pipeline.models.convlstm import ConvLSTMForecast
+from pipeline.training.data_setup import build_datasets
 from pipeline.training.distributed import (
     cleanup_distributed,
     is_main_process,
@@ -32,44 +30,7 @@ from pipeline.training.distributed import (
     train_one_epoch,
     validate,
 )
-
-
-def build_datasets(args):
-    """Build synthetic or real datasets depending on CLI configuration."""
-    if args.data_mode == "synthetic":
-        train_dataset = SyntheticERA5Dataset(
-            n_samples=args.n_train,
-            seq_len=args.seq_len,
-            n_vars=args.synthetic_vars,
-        )
-        val_dataset = SyntheticERA5Dataset(
-            n_samples=args.n_val,
-            seq_len=args.seq_len,
-            n_vars=args.synthetic_vars,
-        )
-        variable_names = [f"synthetic_var_{idx}" for idx in range(args.synthetic_vars)]
-        return train_dataset, val_dataset, variable_names
-
-    variables = args.variables or list(REAL_VARIABLES)
-    full_dataset = ERA5Dataset(
-        zarr_path=args.zarr_path,
-        variables=variables,
-        seq_len=args.seq_len,
-    )
-
-    total_samples = len(full_dataset)
-    val_samples = max(1, int(total_samples * args.val_fraction))
-    train_samples = total_samples - val_samples
-    if train_samples <= 0:
-        raise ValueError(
-            "Not enough samples for a train/validation split. "
-            "Decrease --seq_len or --val_fraction, or provide a larger zarr store."
-        )
-
-    # Use a chronological split to avoid leaking future timesteps into training.
-    train_dataset = Subset(full_dataset, range(0, train_samples))
-    val_dataset = Subset(full_dataset, range(train_samples, total_samples))
-    return train_dataset, val_dataset, variables
+from pipeline.training.metrics import build_metric_context
 
 
 def main():
@@ -86,7 +47,7 @@ def main():
     parser.add_argument("--num_workers",    type=int,   default=2)
     parser.add_argument("--checkpoint_dir", type=str,   default="checkpoints")
     parser.add_argument("--data_mode",      choices=["synthetic", "real"], default="synthetic")
-    parser.add_argument("--zarr_path",      type=str,   default=LOCAL_ZARR_PATH)
+    parser.add_argument("--zarr_path",      type=str,   default="data/era5_subset.zarr")
     parser.add_argument("--variables",      nargs="+",  default=None,
                         help="Variables to train on when --data_mode=real.")
     parser.add_argument("--val_fraction",   type=float, default=0.2,
@@ -115,7 +76,16 @@ def main():
         print(f"Effective batch size: {args.batch_size * world_size}")
         print(f"{'='*60}\n")
 
-    train_dataset, val_dataset, variables = build_datasets(args)
+    train_dataset, val_dataset, variables = build_datasets(
+        data_mode=args.data_mode,
+        seq_len=args.seq_len,
+        synthetic_vars=args.synthetic_vars,
+        n_train=args.n_train,
+        n_val=args.n_val,
+        zarr_path=args.zarr_path,
+        variables=args.variables,
+        val_fraction=args.val_fraction,
+    )
 
     train_sampler = DistributedSampler(train_dataset, shuffle=True)
     val_sampler   = DistributedSampler(val_dataset,   shuffle=False)
@@ -128,6 +98,7 @@ def main():
         val_dataset, batch_size=args.batch_size, sampler=val_sampler,
         num_workers=args.num_workers, pin_memory=True,
     )
+    metric_context = build_metric_context(val_loader, device, variables)
 
     if is_main_process():
         print(f"Variables: {variables}")
@@ -155,15 +126,20 @@ def main():
     for epoch in range(1, args.epochs + 1):
         t0         = time.time()
         train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device, epoch, rank)
-        val_loss   = validate(model, val_loader, criterion, device)
+        val_result = validate(model, val_loader, criterion, device, metric_context=metric_context)
+        val_loss   = val_result["loss"]
         scheduler.step()
         elapsed    = time.time() - t0
 
         if is_main_process():
+            rmse_preview = ", ".join(
+                f"{name}={value:.3f}" for name, value in zip(variables[:3], val_result["rmse"][:3])
+            )
             print(
                 f"Epoch {epoch:3d}/{args.epochs} | "
                 f"Train Loss: {train_loss:.5f} | "
                 f"Val Loss: {val_loss:.5f} | "
+                f"Val RMSE: {rmse_preview} | "
                 f"LR: {scheduler.get_last_lr()[0]:.2e} | "
                 f"Time: {elapsed:.1f}s"
             )

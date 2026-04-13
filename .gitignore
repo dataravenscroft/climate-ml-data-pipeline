@@ -100,8 +100,9 @@ gcp_credentials/
 output/
 outputs/
 figures/
+viz/evaluation_real9/
+viz/evaluation_smoke/
 *.pdf
 *.png
 *.jpg
 # (remove *.png if you want to commit plots/diagrams)
-

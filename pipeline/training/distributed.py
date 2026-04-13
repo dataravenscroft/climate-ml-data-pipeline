@@ -3,6 +3,8 @@ import os
 import torch
 import torch.distributed as dist
 
+from pipeline.training.metrics import ForecastMetricAccumulator
+
 
 def setup_distributed(backend: str | None = None):
     """Initialize the distributed process group.
@@ -57,10 +59,13 @@ def train_one_epoch(model, loader, optimizer, criterion, device, epoch, rank):
     return avg_loss
 
 
-def validate(model, loader, criterion, device):
+def validate(model, loader, criterion, device, metric_context=None):
     model.eval()
     total_loss = torch.tensor(0.0, device=device)
     n_batches = 0
+    metrics = None
+    if metric_context is not None:
+        metrics = ForecastMetricAccumulator(metric_context.variable_names, device)
 
     with torch.no_grad():
         for x, y in loader:
@@ -69,10 +74,23 @@ def validate(model, loader, criterion, device):
             pred = model(x)
             total_loss += criterion(pred, y).detach()
             n_batches += 1
+            if metrics is not None:
+                pred_for_metrics = metric_context.denormalize(pred)
+                y_for_metrics = metric_context.denormalize(y)
+                metrics.update(
+                    pred_for_metrics,
+                    y_for_metrics,
+                    lat_weights=metric_context.lat_weights,
+                    climatology=metric_context.climatology,
+                )
 
     dist.all_reduce(total_loss, op=dist.ReduceOp.SUM)
     avg_loss = (total_loss / (n_batches * dist.get_world_size())).item()
-    return avg_loss
+    result = {"loss": avg_loss}
+    if metrics is not None:
+        metrics.reduce()
+        result.update(metrics.compute())
+    return result
 
 
 def save_checkpoint(model, optimizer, epoch, loss, path):

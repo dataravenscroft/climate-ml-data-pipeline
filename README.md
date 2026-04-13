@@ -62,7 +62,6 @@ and climate AI stack:
 
 Planned next steps for stronger Earth-2 alignment:
 
-- add forecast evaluation metrics such as latitude-weighted RMSE and anomaly correlation
 - add a PhysicsNeMo-aligned training recipe or dataset/config layout
 - add an Earth2Studio inference demo with a pretrained weather model
 - expand beyond the ConvLSTM baseline toward architectures that better match the
@@ -77,11 +76,13 @@ Planned next steps for stronger Earth-2 alignment:
 - Sliding-window PyTorch dataset for sequence-to-one forecasting
 - ConvLSTM encoder for spatially aware temporal forecasting
 - DDP training entry point for single-node and multi-node scaling
+- Forecast evaluation with RMSE, latitude-weighted RMSE, anomaly correlation, and saved plots
 
 ## Current Status
 
 - Implemented: ERA5 ingestion, subsetting, local Zarr writing, regridding, summary stats, PyTorch dataset, ConvLSTM model, DDP training utilities
 - Implemented: training on both synthetic ERA5-like data and the real local ERA5 Zarr store
+- Implemented: offline forecast evaluation script with skill metrics and visualization outputs
 - Current real-data scope: CONUS subset, 9 variables, 2-week sample window
 - Next step: extend the real-data training path to larger temporal coverage and richer benchmark variable sets
 
@@ -101,11 +102,14 @@ climate-ml-data-pipeline/
 │   ├── models/
 │   │   └── convlstm.py          # ConvLSTMCell + ConvLSTMForecast
 │   └── training/
-│       └── distributed.py       # DDP utilities + training/validation loops
+│       ├── distributed.py       # DDP utilities + training/validation loops
+│       ├── data_setup.py        # shared dataset builders for training/evaluation
+│       └── metrics.py           # forecast skill metrics
 ├── scripts/
 │   ├── run_pipeline.py                        # entry point: python scripts/run_pipeline.py
 │   ├── pipeline_2_arcgridAML_currenttooling.py  # wrapper for water stress demo
-│   └── train.py                               # entry point: torchrun scripts/train.py
+│   ├── train.py                               # entry point: torchrun scripts/train.py
+│   └── evaluate_forecast.py                  # checkpoint evaluation + plots
 ├── notebooks/
 │   ├── era5_pipeline.ipynb      # step-by-step pipeline walkthrough
 │   └── era5_exploration.ipynb   # exploratory analysis
@@ -296,7 +300,32 @@ This will:
 python scripts/pipeline_2_arcgridAML_currenttooling.py
 ```
 
-### 6. Train on multiple GPUs
+### 6. Evaluate forecast skill and save plots
+
+```bash
+python scripts/evaluate_forecast.py \
+  --checkpoint checkpoints/best_model.pt \
+  --data_mode real \
+  --zarr_path data/era5_subset.zarr \
+  --variables \
+    2m_temperature \
+    10m_u_component_of_wind \
+    10m_v_component_of_wind \
+    temperature_850 \
+    geopotential_500 \
+    volumetric_soil_water_layer_1 \
+    leaf_area_index_high_vegetation \
+    surface_solar_radiation_downwards \
+    total_sky_direct_solar_radiation_at_surface
+```
+
+This writes:
+- `viz/evaluation/metrics.json`
+- `viz/evaluation/rmse_by_variable.png`
+- `viz/evaluation/acc_by_variable.png`
+- `viz/evaluation/sample_forecast_comparison.png`
+
+### 7. Train on multiple GPUs
 
 ```bash
 torchrun --nproc_per_node=2 scripts/train.py \
