@@ -454,3 +454,13 @@ and radiation variables.
 - [Pangu-Weather](https://arxiv.org/abs/2211.02556) — Transformer-based NWP
 - [NVIDIA PhysicsNeMo](https://github.com/NVIDIA/physicsnemo) — Framework this work targets
 - [NVIDIA Earth2Studio](https://github.com/NVIDIA/earth2studio) — Inference and evaluation
+
+---
+
+## Other Work
+
+Companion NVIDIA-focused portfolio work is currently in progress:
+
+- Earth-2 / PhysicsNeMo weather recipes — a separate project focused on
+  PhysicsNeMo-style training recipes, Earth2Studio inference workflows, and
+  benchmark-oriented weather/climate evaluation.
