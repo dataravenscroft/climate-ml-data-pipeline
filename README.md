@@ -45,6 +45,29 @@ training loops. This project is designed to show fluency across that full stack:
 - geospatial regridding and array computing
 - distributed deep learning for forecasting workloads
 
+## NVIDIA Earth-2 Alignment
+
+This repo is being developed as an Earth-2-aligned portfolio project. The goal
+is to demonstrate the parts of the workflow that map well onto NVIDIA's weather
+and climate AI stack:
+
+- ERA5 ingestion and ML-ready preprocessing, which mirrors the data curation
+  stage needed before large-scale forecasting or diagnostic modeling
+- distributed PyTorch training, which is directly relevant to PhysicsNeMo-style
+  training workflows
+- gridded spatiotemporal forecasting on meteorological variables, which fits the
+  problem class addressed by Earth-2 weather models
+- regional diagnostic outputs, which connect forecasting infrastructure to
+  decision-useful climate and resilience applications
+
+Planned next steps for stronger Earth-2 alignment:
+
+- add forecast evaluation metrics such as latitude-weighted RMSE and anomaly correlation
+- add a PhysicsNeMo-aligned training recipe or dataset/config layout
+- add an Earth2Studio inference demo with a pretrained weather model
+- expand beyond the ConvLSTM baseline toward architectures that better match the
+  current Earth-2 model ecosystem
+
 ## Technical Highlights
 
 - Public ERA5 ingestion from ARCO on Google Cloud via `xr.open_zarr`
