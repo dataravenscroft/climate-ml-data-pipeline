@@ -117,7 +117,7 @@ class ERA5ZarrDataset(Dataset):
         return x.float(), y.float()
 ```
 
-## What AllReduce Does (Interview Reference)
+## What AllReduce Does
 
 After each `loss.backward()`, DDP hooks trigger an **AllReduce** operation:
 1. Each rank computes gradients on its local data shard
