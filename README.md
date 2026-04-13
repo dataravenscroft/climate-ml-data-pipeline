@@ -1,15 +1,33 @@
-# ERA5 ConvLSTM — Spatiotemporal Weather Forecasting
+# ERA5 Climate Pipeline + ConvLSTM Training
 
-PyTorch ConvLSTM trained on ERA5 reanalysis data to predict atmospheric
-state one timestep ahead. Includes full distributed training (DDP/NCCL)
-and a production climate data pipeline (xarray · zarr · dask · xESMF).
+PyTorch ConvLSTM scaffolding alongside an ERA5 reanalysis preprocessing
+pipeline built with xarray, zarr, dask, and xESMF. The repository currently
+has two connected but distinct workflows:
+
+- a real-data ERA5 preprocessing pipeline over a CONUS subset
+- a ConvLSTM training pipeline that currently trains on synthetic ERA5-like data
 
 ---
 
-The model learns to predict the next 6-hourly atmospheric state from
-6 prior timesteps, operating on a global 32×64 grid of four ERA5
-variables: **Z500** (geopotential height), **T850** (temperature),
-**U10** and **V10** (surface winds).
+## What This Is
+
+This repo is a climate ML sandbox that connects Earth-system data engineering
+to deep learning tooling.
+
+Today, the implemented ERA5 preprocessing pipeline pulls three real variables
+from the public ARCO ERA5 archive over a fixed CONUS region and two-week time
+window:
+
+- `2m_temperature`
+- `volumetric_soil_water_layer_1`
+- `leaf_area_index_high_vegetation`
+
+Those fields are written to a local Zarr store, optionally regridded to 1 degree,
+and exposed through a PyTorch `Dataset`/`DataLoader`.
+
+The modeling side of the repo implements a ConvLSTM forecaster and distributed
+training utilities. Training currently uses an in-memory synthetic ERA5-like
+dataset so the model stack can be exercised without downloading real data.
 
 ---
 
@@ -30,10 +48,10 @@ climate-ml-data-pipeline/
 │       └── distributed.py       # DDP utilities + training/validation loops
 ├── scripts/
 │   ├── run_pipeline.py                        # entry point: python scripts/run_pipeline.py
-│   ├── pipeline_2_arcgridAML_currenttooling.py  # northeast US water stress pipeline (gridMET + ERA5)
+│   ├── pipeline_2_arcgridAML_currenttooling.py  # wrapper for water stress demo
 │   └── train.py                               # entry point: torchrun scripts/train.py
 ├── notebooks/
-│   ├── era5_annotated.ipynb     # step-by-step annotated pipeline walkthrough
+│   ├── era5_pipeline.ipynb      # step-by-step pipeline walkthrough
 │   └── era5_exploration.ipynb   # exploratory analysis
 ├── docs/
 │   └── DISTRIBUTED_TRAINING.md  # DDP setup, launch commands, speedup results
@@ -46,6 +64,9 @@ climate-ml-data-pipeline/
 ---
 
 ## ConvLSTM Forward Pass
+
+The ConvLSTM implementation is generic over channel count and grid size.
+In this repo's synthetic training setup, the default shape is:
 
 The core architectural insight: **the T dimension exists only in the input tensor, then disappears.**
 
@@ -100,7 +121,7 @@ low-forget *region* in the f field across H×W.
 ## Architecture
 
 ```
-Input: (B, T=6, C=4, H=32, W=64)   ← 6 weather maps, 4 variables, global grid
+Input: (B, T=6, C=4, H=32, W=64)   ← default synthetic training setup
 │
 ├── ConvLSTM Layer 1  (64 hidden channels)
 │     └── 3×3 conv gates preserve spatial structure at each timestep
@@ -146,6 +167,7 @@ python scripts/run_pipeline.py
 This will:
 - Open ARCO ERA5 lazily from public GCS (no credentials needed)
 - Subset to CONUS, 2 weeks of hourly data
+- Select `2m_temperature`, soil moisture layer 1, and high-vegetation LAI
 - Write local zarr with ML-optimized chunking (`{time: 1, lat: -1, lon: -1}`)
 - Regrid to 1° using xESMF bilinear interpolation #Unable to install 
 - Compute Dask parallel temporal statistics
@@ -158,13 +180,12 @@ python scripts/pipeline_2_arcgridAML_currenttooling.py
 ```
 
 This will:
-- Fetch daily precipitation and temperature for northeast US from **gridMET** (~4 km, no auth)
-  via public OPeNDAP (`thredds.northwestknowledge.net`)
-- Load ERA5 surface variables from the local zarr store (`data/zarr/era5_real_subset.zarr`)
-- Compute a water stress index: `stress = max(0, -(precip - 1.2 × temp))`
+- Load ERA5 surface variables from the local zarr store written by the main pipeline
+  (`data/era5_subset.zarr`)
+- Build a simple synthetic DEM placeholder on the ERA5 grid
+- Compute a toy water stress index from soil moisture and temperature:
+  `stress = max(0, -(soil_moisture - 1.2 × temperature_c))`
 - Save result to `data/water_stress.nc`
-
-**Dependencies:** `pip install donfig && pip install "zarr>=3"`
 
 ---
 
@@ -174,7 +195,7 @@ This will:
 torchrun --nproc_per_node=1 scripts/train.py --epochs 10
 ```
 
-### 4. Train (multi-GPU)
+### 5. Train (multi-GPU)
 
 ```bash
 torchrun --nproc_per_node=2 scripts/train.py --epochs 10
@@ -253,33 +274,32 @@ Training complete. Best val loss: 0.01017
 
 ## Variables
 
-| Variable | Description | Level | Units |
+| Variable | Description | Units | Used Where |
 |---|---|---|---|
-| Z500 | Geopotential height | 500 hPa | m |
-| T850 | Temperature | 850 hPa | K |
-| U10 | Eastward wind | 10 m | m/s |
-| V10 | Northward wind | 10 m | m/s |
+| `2m_temperature` | Near-surface air temperature | K | Real ERA5 preprocessing |
+| `volumetric_soil_water_layer_1` | Top-layer soil moisture | m3 m-3 | Real ERA5 preprocessing |
+| `leaf_area_index_high_vegetation` | High-vegetation leaf area index | m2 m-2 | Real ERA5 preprocessing |
+| `z500`, `t850`, `u10`, `v10` | Synthetic ERA5-like benchmark variables | mixed | Synthetic data generator |
 
-These are the standard benchmark variables used in FourCastNet,
-Pangu-Weather, and NVIDIA PhysicsNeMo evaluations.
-
-The pipeline also supports ERA5 surface/land variables:
-`2m_temperature`, `volumetric_soil_water_layer_1`, `leaf_area_index_high_vegetation`.
+The synthetic generator in `pipeline/data/synthetic.py` uses the more classical
+weather-forecasting variables (`z500`, `t850`, `u10`, `v10`), while the current
+real-data pipeline is focused on surface and land variables.
 
 ---
 
 ## Background
-What it learns
-Conv2d part → spatial structure
-fronts
-pressure gradients
-terrain effects
-LSTM part → temporal dynamics
-advection
-persistence
-lagged responses
 
-More current AI weather models like FourCastNet  GraphCast largely have moved away from ConvLSTM - conv kernels are local and makes it hard to capture global circulation dynamics. LSTM time steps process, sequential, slow and difficult to scale. 
+What the ConvLSTM is good at:
+
+- `Conv2d` layers learn local spatial structure such as fronts, gradients, and
+  terrain-linked patterns
+- recurrent state carries temporal information such as persistence and lagged response
+
+What it is not optimized for:
+
+- modern global weather models like FourCastNet and GraphCast generally scale
+  better to long-range, global circulation dynamics than ConvLSTM
+- ConvLSTM processes timesteps sequentially, which limits parallelism
 
 
 ---
@@ -291,4 +311,3 @@ More current AI weather models like FourCastNet  GraphCast largely have moved aw
 - [Pangu-Weather](https://arxiv.org/abs/2211.02556) — Transformer-based NWP
 - [NVIDIA PhysicsNeMo](https://github.com/NVIDIA/physicsnemo) — Framework this work targets
 - [NVIDIA Earth2Studio](https://github.com/NVIDIA/earth2studio) — Inference and evaluation
-
