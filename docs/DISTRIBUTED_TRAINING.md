@@ -29,7 +29,7 @@ torchrun (launcher)
 ### Single Node, 2 GPUs (Colab Pro / Lambda / RunPod)
 
 ```bash
-torchrun --nproc_per_node=2 train_distributed.py \
+torchrun --nproc_per_node=2 scripts/train.py \
     --epochs 20 \
     --batch_size 16 \
     --hidden 64
@@ -40,7 +40,7 @@ Effective batch size = 16 × 2 = **32**
 ### Single Node, 1 GPU (development / testing)
 
 ```bash
-torchrun --nproc_per_node=1 train_distributed.py --epochs 5
+torchrun --nproc_per_node=1 scripts/train.py --epochs 5
 ```
 
 ### Multi-Node (e.g. 2 nodes × 4 GPUs = 8 GPUs total)
@@ -53,7 +53,7 @@ torchrun \
     --node_rank=0 \
     --master_addr=<node0_ip> \
     --master_port=29500 \
-    train_distributed.py
+    scripts/train.py
 
 # Run on node 1:
 torchrun \
@@ -62,7 +62,7 @@ torchrun \
     --node_rank=1 \
     --master_addr=<node0_ip> \
     --master_port=29500 \
-    train_distributed.py
+    scripts/train.py
 ```
 
 ## Observed Speedup (2x T4, Colab Pro)
@@ -93,7 +93,9 @@ scheduler = torch.optim.lr_scheduler.LinearLR(
 
 ## Adapting to Real ERA5 Data
 
-Replace the synthetic `ERA5Dataset` with xarray-based loading:
+The current training script uses `SyntheticERA5Dataset` for offline testing.
+To adapt this to the real Zarr pipeline, replace the synthetic dataset with
+xarray-based loading:
 
 ```python
 import xarray as xr

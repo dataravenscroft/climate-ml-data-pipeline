@@ -4,7 +4,7 @@ Loads local ERA5 zarr store (written by run_pipeline.py), computes a simple
 water stress index from soil moisture and temperature, and saves to NetCDF.
 
 Usage:
-    python scripts/review/pipeline_2_arcgridAML_currenttooling.py
+    python scripts/pipeline_2_arcgridAML_currenttooling.py
 
 Output:
     data/water_stress.nc
@@ -14,8 +14,8 @@ import numpy as np
 import xarray as xr
 
 # ── Load ERA5 zarr ─────────────────────────────────────────────────────────────
-print("opening ERA5 zarr store …")
-ds = xr.open_zarr("data/zarr/era5_real_subset.zarr", consolidated=False)
+print("opening ERA5 zarr store ...")
+ds = xr.open_zarr("data/era5_subset.zarr", consolidated=True)
 
 subset = ds[["2m_temperature", "volumetric_soil_water_layer_1", "leaf_area_index_high_vegetation"]].sel(
     time=slice("2020-06-01", "2020-06-14"),
