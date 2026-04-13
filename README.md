@@ -15,12 +15,18 @@ This project ingests public ERA5 data from the ARCO archive, subsets and rechunk
 it into ML-friendly Zarr stores, and trains a ConvLSTM to predict the next
 atmospheric state from a sliding window of prior timesteps.
 
-The current implemented real-data workflow uses three ERA5 surface and land
-variables over a fixed CONUS domain and two-week time window:
+The current implemented real-data workflow uses a mixed forecasting and
+land-surface variable set over a fixed CONUS domain and two-week time window:
 
 - `2m_temperature`
+- `10m_u_component_of_wind`
+- `10m_v_component_of_wind`
+- `temperature_850`
+- `geopotential_500`
 - `volumetric_soil_water_layer_1`
 - `leaf_area_index_high_vegetation`
+- `surface_solar_radiation_downwards`
+- `total_sky_direct_solar_radiation_at_surface`
 
 Those variables are written to a local Zarr store, regridded to 1 degree, and
 fed into a PyTorch `Dataset` that supports distributed training.
@@ -53,7 +59,7 @@ training loops. This project is designed to show fluency across that full stack:
 
 - Implemented: ERA5 ingestion, subsetting, local Zarr writing, regridding, summary stats, PyTorch dataset, ConvLSTM model, DDP training utilities
 - Implemented: training on both synthetic ERA5-like data and the real local ERA5 Zarr store
-- Current real-data scope: CONUS subset, 3 variables, 2-week sample window
+- Current real-data scope: CONUS subset, 9 variables, 2-week sample window
 - Next step: extend the real-data training path to larger temporal coverage and richer benchmark variable sets
 
 ---
@@ -217,7 +223,7 @@ python scripts/run_pipeline.py
 This will:
 - Open ARCO ERA5 lazily from public GCS (no credentials needed)
 - Subset to CONUS, 2 weeks of hourly data
-- Select `2m_temperature`, soil moisture layer 1, and high-vegetation LAI
+- Select temperature, wind, upper-air, land-surface, and solar-radiation variables
 - Write local zarr with ML-optimized chunking (`{time: 1, lat: -1, lon: -1}`)
 - Regrid to 1° using xESMF bilinear interpolation #Unable to install 
 - Compute Dask parallel temporal statistics
@@ -229,7 +235,16 @@ This will:
 torchrun --nproc_per_node=1 scripts/train.py \
   --data_mode real \
   --zarr_path data/era5_subset.zarr \
-  --variables 2m_temperature volumetric_soil_water_layer_1 leaf_area_index_high_vegetation \
+  --variables \
+    2m_temperature \
+    10m_u_component_of_wind \
+    10m_v_component_of_wind \
+    temperature_850 \
+    geopotential_500 \
+    volumetric_soil_water_layer_1 \
+    leaf_area_index_high_vegetation \
+    surface_solar_radiation_downwards \
+    total_sky_direct_solar_radiation_at_surface \
   --epochs 10
 ```
 
@@ -264,7 +279,16 @@ python scripts/pipeline_2_arcgridAML_currenttooling.py
 torchrun --nproc_per_node=2 scripts/train.py \
   --data_mode real \
   --zarr_path data/era5_subset.zarr \
-  --variables 2m_temperature volumetric_soil_water_layer_1 leaf_area_index_high_vegetation \
+  --variables \
+    2m_temperature \
+    10m_u_component_of_wind \
+    10m_v_component_of_wind \
+    temperature_850 \
+    geopotential_500 \
+    volumetric_soil_water_layer_1 \
+    leaf_area_index_high_vegetation \
+    surface_solar_radiation_downwards \
+    total_sky_direct_solar_radiation_at_surface \
   --epochs 10
 ```
 
@@ -354,13 +378,20 @@ Training complete. Best val loss: 0.01017
 | Variable | Description | Units | Used Where |
 |---|---|---|---|
 | `2m_temperature` | Near-surface air temperature | K | Real ERA5 preprocessing |
+| `10m_u_component_of_wind` | Eastward 10 m wind | m s-1 | Real ERA5 preprocessing |
+| `10m_v_component_of_wind` | Northward 10 m wind | m s-1 | Real ERA5 preprocessing |
+| `temperature_850` | Air temperature at 850 hPa | K | Real ERA5 preprocessing |
+| `geopotential_500` | Geopotential at 500 hPa | m2 s-2 | Real ERA5 preprocessing |
 | `volumetric_soil_water_layer_1` | Top-layer soil moisture | m3 m-3 | Real ERA5 preprocessing |
 | `leaf_area_index_high_vegetation` | High-vegetation leaf area index | m2 m-2 | Real ERA5 preprocessing |
+| `surface_solar_radiation_downwards` | Total downward shortwave radiation at surface | J m-2 | Real ERA5 preprocessing |
+| `total_sky_direct_solar_radiation_at_surface` | Direct-beam shortwave radiation at surface | J m-2 | Real ERA5 preprocessing |
 | `z500`, `t850`, `u10`, `v10` | Synthetic ERA5-like benchmark variables | mixed | Synthetic data generator |
 
 The synthetic generator in `pipeline/data/synthetic.py` uses the more classical
 weather-forecasting variables (`z500`, `t850`, `u10`, `v10`), while the current
-real-data training path is focused on surface and land variables.
+real-data training path uses a broader mix of near-surface, upper-air, land,
+and radiation variables.
 
 ---
 

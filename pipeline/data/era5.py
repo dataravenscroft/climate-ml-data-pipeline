@@ -16,9 +16,20 @@ ARCO_ERA5_PATH = (
 
 VARIABLES = [
     "2m_temperature",
+    "10m_u_component_of_wind",
+    "10m_v_component_of_wind",
+    "temperature_850",
+    "geopotential_500",
     "volumetric_soil_water_layer_1",
     "leaf_area_index_high_vegetation",
+    "surface_solar_radiation_downwards",
+    "total_sky_direct_solar_radiation_at_surface",
 ]
+
+PRESSURE_LEVEL_VARIABLES = {
+    "temperature_850": ("temperature", 850),
+    "geopotential_500": ("geopotential", 500),
+}
 
 TIME_START = "2020-06-01"
 TIME_END   = "2020-06-14"   # 2 weeks = 336 hourly timesteps
@@ -69,11 +80,29 @@ def open_and_subset(client) -> xr.Dataset:
     print(f"  Remote vars available: {list(ds.data_vars)[:8]} ...")
     print(f"  Subsetting: {TIME_START} → {TIME_END}, lat [{LAT_MIN},{LAT_MAX}], lon [{LON_MIN},{LON_MAX}]")
 
-    subset = ds[VARIABLES].sel(
+    raw_variables = sorted(
+        {
+            PRESSURE_LEVEL_VARIABLES.get(name, (name, None))[0]
+            for name in VARIABLES
+        }
+    )
+
+    subset = ds[raw_variables].sel(
         time=slice(TIME_START, TIME_END),
         latitude=slice(LAT_MAX, LAT_MIN),
         longitude=slice(LON_MIN, LON_MAX),
     )
+
+    for output_name, (source_name, level) in PRESSURE_LEVEL_VARIABLES.items():
+        subset[output_name] = subset[source_name].sel(level=level)
+        subset[output_name].attrs = {
+            **subset[source_name].attrs,
+            "pressure_level": level,
+        }
+
+    drop_raw_pressure_vars = sorted({source for source, _ in PRESSURE_LEVEL_VARIABLES.values()})
+    subset = subset.drop_vars(drop_raw_pressure_vars)
+    subset = subset[VARIABLES]
 
     # Rename to lat/lon — xESMF and most ML libraries expect these names
     subset = subset.rename({"latitude": "lat", "longitude": "lon"})

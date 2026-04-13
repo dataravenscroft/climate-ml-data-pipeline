@@ -64,7 +64,16 @@ torchrun --nproc_per_node=1 scripts/train.py \
     --data_mode real \
     --backend gloo \
     --zarr_path data/era5_subset.zarr \
-    --variables 2m_temperature volumetric_soil_water_layer_1 leaf_area_index_high_vegetation \
+    --variables \
+        2m_temperature \
+        10m_u_component_of_wind \
+        10m_v_component_of_wind \
+        temperature_850 \
+        geopotential_500 \
+        volumetric_soil_water_layer_1 \
+        leaf_area_index_high_vegetation \
+        surface_solar_radiation_downwards \
+        total_sky_direct_solar_radiation_at_surface \
     --epochs 10
 ```
 
@@ -81,7 +90,16 @@ torchrun \
     scripts/train.py \
     --data_mode real \
     --zarr_path data/era5_subset.zarr \
-    --variables 2m_temperature volumetric_soil_water_layer_1 leaf_area_index_high_vegetation
+    --variables \
+        2m_temperature \
+        10m_u_component_of_wind \
+        10m_v_component_of_wind \
+        temperature_850 \
+        geopotential_500 \
+        volumetric_soil_water_layer_1 \
+        leaf_area_index_high_vegetation \
+        surface_solar_radiation_downwards \
+        total_sky_direct_solar_radiation_at_surface
 
 # Run on node 1:
 torchrun \
@@ -93,7 +111,16 @@ torchrun \
     scripts/train.py \
     --data_mode real \
     --zarr_path data/era5_subset.zarr \
-    --variables 2m_temperature volumetric_soil_water_layer_1 leaf_area_index_high_vegetation
+    --variables \
+        2m_temperature \
+        10m_u_component_of_wind \
+        10m_v_component_of_wind \
+        temperature_850 \
+        geopotential_500 \
+        volumetric_soil_water_layer_1 \
+        leaf_area_index_high_vegetation \
+        surface_solar_radiation_downwards \
+        total_sky_direct_solar_radiation_at_surface
 ```
 
 ## Observed Speedup (2x T4, Colab Pro)
@@ -133,7 +160,9 @@ When `--data_mode real` is used, `scripts/train.py`:
 - configures the ConvLSTM input and output channels from the selected variable list
 
 The default real-data path is `data/era5_subset.zarr`, which matches the output
-of `scripts/run_pipeline.py`.
+of `scripts/run_pipeline.py`. The current pipeline writes a 9-variable mix of
+surface temperature, winds, upper-air diagnostics, soil moisture, LAI, and
+surface solar radiation terms.
 
 ## What AllReduce Does
 
