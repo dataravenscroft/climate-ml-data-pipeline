@@ -29,7 +29,17 @@ class ERA5Dataset(Dataset):
         variables: Sequence[str],
         seq_len: int = 6,
     ) -> None:
-        self.ds        = xr.open_zarr(zarr_path, consolidated=True)[list(variables)]
+        full_ds = xr.open_zarr(zarr_path, consolidated=True)
+        missing = [v for v in variables if v not in full_ds.data_vars]
+        if missing:
+            available = ", ".join(sorted(full_ds.data_vars))
+            missing_str = ", ".join(missing)
+            raise ValueError(
+                f"Variables not found in {zarr_path}: {missing_str}. "
+                f"Available variables: {available}"
+            )
+
+        self.ds        = full_ds[list(variables)]
         self.variables = list(variables)
         self.seq_len   = seq_len
         self.n_times   = self.ds.sizes["time"]

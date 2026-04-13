@@ -26,10 +26,21 @@ torchrun (launcher)
 
 ## Quick Start
 
+The training entry point supports two modes:
+
+- `--data_mode synthetic` for fast offline testing
+- `--data_mode real` for training from the local ERA5 Zarr store produced by `scripts/run_pipeline.py`
+
+Backend selection is also configurable:
+
+- `--backend auto` chooses `nccl` when CUDA is available and `gloo` otherwise
+- `--backend gloo` is useful for CPU-only smoke tests
+
 ### Single Node, 2 GPUs (Colab Pro / Lambda / RunPod)
 
 ```bash
 torchrun --nproc_per_node=2 scripts/train.py \
+    --data_mode synthetic \
     --epochs 20 \
     --batch_size 16 \
     --hidden 64
@@ -40,7 +51,21 @@ Effective batch size = 16 × 2 = **32**
 ### Single Node, 1 GPU (development / testing)
 
 ```bash
-torchrun --nproc_per_node=1 scripts/train.py --epochs 5
+torchrun --nproc_per_node=1 scripts/train.py \
+    --data_mode synthetic \
+    --backend gloo \
+    --epochs 5
+```
+
+### Single Node, 1 GPU with real ERA5 data
+
+```bash
+torchrun --nproc_per_node=1 scripts/train.py \
+    --data_mode real \
+    --backend gloo \
+    --zarr_path data/era5_subset.zarr \
+    --variables 2m_temperature volumetric_soil_water_layer_1 leaf_area_index_high_vegetation \
+    --epochs 10
 ```
 
 ### Multi-Node (e.g. 2 nodes × 4 GPUs = 8 GPUs total)
@@ -53,7 +78,10 @@ torchrun \
     --node_rank=0 \
     --master_addr=<node0_ip> \
     --master_port=29500 \
-    scripts/train.py
+    scripts/train.py \
+    --data_mode real \
+    --zarr_path data/era5_subset.zarr \
+    --variables 2m_temperature volumetric_soil_water_layer_1 leaf_area_index_high_vegetation
 
 # Run on node 1:
 torchrun \
@@ -62,7 +90,10 @@ torchrun \
     --node_rank=1 \
     --master_addr=<node0_ip> \
     --master_port=29500 \
-    scripts/train.py
+    scripts/train.py \
+    --data_mode real \
+    --zarr_path data/era5_subset.zarr \
+    --variables 2m_temperature volumetric_soil_water_layer_1 leaf_area_index_high_vegetation
 ```
 
 ## Observed Speedup (2x T4, Colab Pro)
@@ -91,31 +122,18 @@ scheduler = torch.optim.lr_scheduler.LinearLR(
 )
 ```
 
-## Adapting to Real ERA5 Data
+## Real ERA5 Training Notes
 
-The current training script uses `SyntheticERA5Dataset` for offline testing.
-To adapt this to the real Zarr pipeline, replace the synthetic dataset with
-xarray-based loading:
+When `--data_mode real` is used, `scripts/train.py`:
 
-```python
-import xarray as xr
+- opens the local Zarr store with `ERA5Dataset`
+- normalizes each requested variable
+- creates sliding windows of length `--seq_len`
+- performs a chronological train/validation split using `--val_fraction`
+- configures the ConvLSTM input and output channels from the selected variable list
 
-class ERA5ZarrDataset(Dataset):
-    def __init__(self, zarr_path, variables, seq_len=6):
-        self.ds = xr.open_zarr(zarr_path)[variables].load()
-        self.seq_len = seq_len
-
-    def __getitem__(self, idx):
-        frames = self.ds.isel(time=slice(idx, idx + self.seq_len + 1))
-        x = torch.from_numpy(
-            np.stack([frames[v].values for v in self.ds.data_vars], axis=1)
-            [:self.seq_len]  # (T, C, H, W)
-        )
-        y = torch.from_numpy(
-            np.stack([frames[v].values[-1] for v in self.ds.data_vars], axis=0)
-        )  # (C, H, W)
-        return x.float(), y.float()
-```
+The default real-data path is `data/era5_subset.zarr`, which matches the output
+of `scripts/run_pipeline.py`.
 
 ## What AllReduce Does
 

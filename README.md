@@ -1,33 +1,60 @@
-# ERA5 Climate Pipeline + ConvLSTM Training
+# Climate ML Data Pipeline for ERA5 Forecasting
 
-PyTorch ConvLSTM scaffolding alongside an ERA5 reanalysis preprocessing
-pipeline built with xarray, zarr, dask, and xESMF. The repository currently
-has two connected but distinct workflows:
+Climate-focused machine learning project built to demonstrate the full path from
+Earth-system data ingestion to spatiotemporal model training. The repo combines:
 
-- a real-data ERA5 preprocessing pipeline over a CONUS subset
-- a ConvLSTM training pipeline that currently trains on synthetic ERA5-like data
+- ERA5 reanalysis preprocessing with `xarray`, `zarr`, `dask`, and `xESMF`
+- PyTorch ConvLSTM modeling for next-step forecasting on gridded climate fields
+- distributed training with `torchrun` and `DistributedDataParallel`
 
 ---
 
-## What This Is
+## Project Summary
 
-This repo is a climate ML sandbox that connects Earth-system data engineering
-to deep learning tooling.
+This project ingests public ERA5 data from the ARCO archive, subsets and rechunks
+it into ML-friendly Zarr stores, and trains a ConvLSTM to predict the next
+atmospheric state from a sliding window of prior timesteps.
 
-Today, the implemented ERA5 preprocessing pipeline pulls three real variables
-from the public ARCO ERA5 archive over a fixed CONUS region and two-week time
-window:
+The current implemented real-data workflow uses three ERA5 surface and land
+variables over a fixed CONUS domain and two-week time window:
 
 - `2m_temperature`
 - `volumetric_soil_water_layer_1`
 - `leaf_area_index_high_vegetation`
 
-Those fields are written to a local Zarr store, optionally regridded to 1 degree,
-and exposed through a PyTorch `Dataset`/`DataLoader`.
+Those variables are written to a local Zarr store, regridded to 1 degree, and
+fed into a PyTorch `Dataset` that supports distributed training.
 
-The modeling side of the repo implements a ConvLSTM forecaster and distributed
-training utilities. Training currently uses an in-memory synthetic ERA5-like
-dataset so the model stack can be exercised without downloading real data.
+The repo also includes a synthetic ERA5-like generator for fast offline testing,
+which makes it easy to validate the training stack before running on real data.
+
+## Why This Matters
+
+Climate AI work is not just model architecture. It also depends on robust
+scientific data handling, geospatial resampling, chunked storage, and scalable
+training loops. This project is designed to show fluency across that full stack:
+
+- cloud-native climate data access
+- spatiotemporal ML data preparation
+- geospatial regridding and array computing
+- distributed deep learning for forecasting workloads
+
+## Technical Highlights
+
+- Public ERA5 ingestion from ARCO on Google Cloud via `xr.open_zarr`
+- Zarr-first preprocessing with chunk layouts tuned for ML sample access
+- Dask-backed lazy computation for statistics and preprocessing
+- xESMF bilinear regridding onto a coarser target grid
+- Sliding-window PyTorch dataset for sequence-to-one forecasting
+- ConvLSTM encoder for spatially aware temporal forecasting
+- DDP training entry point for single-node and multi-node scaling
+
+## Current Status
+
+- Implemented: ERA5 ingestion, subsetting, local Zarr writing, regridding, summary stats, PyTorch dataset, ConvLSTM model, DDP training utilities
+- Implemented: training on both synthetic ERA5-like data and the real local ERA5 Zarr store
+- Current real-data scope: CONUS subset, 3 variables, 2-week sample window
+- Next step: extend the real-data training path to larger temporal coverage and richer benchmark variable sets
 
 ---
 
@@ -63,10 +90,33 @@ climate-ml-data-pipeline/
 
 ---
 
+## Architecture Overview
+
+```text
+ARCO ERA5 (public zarr on GCS)
+        |
+        v
+open + subset with xarray
+        |
+        v
+write local zarr with ML-friendly chunks
+        |
+        +--> optional xESMF regridding + Dask summary stats
+        |
+        v
+ERA5Dataset sliding windows
+        |
+        v
+ConvLSTMForecast (PyTorch)
+        |
+        v
+DDP training with torchrun
+```
+
 ## ConvLSTM Forward Pass
 
 The ConvLSTM implementation is generic over channel count and grid size.
-In this repo's synthetic training setup, the default shape is:
+The default synthetic setup uses:
 
 The core architectural insight: **the T dimension exists only in the input tensor, then disappears.**
 
@@ -121,7 +171,7 @@ low-forget *region* in the f field across H×W.
 ## Architecture
 
 ```
-Input: (B, T=6, C=4, H=32, W=64)   ← default synthetic training setup
+Input: (B, T=6, C=4, H=32, W=64)   ← synthetic training default
 │
 ├── ConvLSTM Layer 1  (64 hidden channels)
 │     └── 3×3 conv gates preserve spatial structure at each timestep
@@ -158,7 +208,7 @@ pip install -r requirements.txt
 > xESMF may require conda on some systems:
 > `conda install -c conda-forge xesmf`
 
-### 2. Run the data pipeline (real ARCO ERA5)
+### 2. Run the real ERA5 preprocessing pipeline
 
 ```bash
 python scripts/run_pipeline.py
@@ -173,32 +223,49 @@ This will:
 - Compute Dask parallel temporal statistics
 - Connect the zarr store to a PyTorch DataLoader
 
-### 3. Run the northeast US water stress pipeline
+### 3. Train on the real ERA5 Zarr store
+
+```bash
+torchrun --nproc_per_node=1 scripts/train.py \
+  --data_mode real \
+  --zarr_path data/era5_subset.zarr \
+  --variables 2m_temperature volumetric_soil_water_layer_1 leaf_area_index_high_vegetation \
+  --epochs 10
+```
+
+This will:
+- Read the local Zarr store produced by `scripts/run_pipeline.py`
+- Create normalized sliding windows with `ERA5Dataset`
+- Split windows chronologically into train and validation subsets
+- Train the ConvLSTM on the real ERA5 variables
+
+On CPU-only machines, add `--backend gloo`. The default `--backend auto`
+selects `nccl` when CUDA is available and `gloo` otherwise.
+
+### 4. Train on synthetic ERA5-like data
+
+```bash
+torchrun --nproc_per_node=1 scripts/train.py --data_mode synthetic --epochs 10
+```
+
+This will:
+- Exercise the training stack without needing remote ERA5 access or a local Zarr store
+- Use a 4-channel synthetic benchmark dataset with realistic-looking spatiotemporal structure
+
+### 5. Run the water stress demo
 
 ```bash
 python scripts/pipeline_2_arcgridAML_currenttooling.py
 ```
 
-This will:
-- Load ERA5 surface variables from the local zarr store written by the main pipeline
-  (`data/era5_subset.zarr`)
-- Build a simple synthetic DEM placeholder on the ERA5 grid
-- Compute a toy water stress index from soil moisture and temperature:
-  `stress = max(0, -(soil_moisture - 1.2 × temperature_c))`
-- Save result to `data/water_stress.nc`
-
----
-
-### 4. Train (single GPU)
+### 6. Train on multiple GPUs
 
 ```bash
-torchrun --nproc_per_node=1 scripts/train.py --epochs 10
-```
-
-### 5. Train (multi-GPU)
-
-```bash
-torchrun --nproc_per_node=2 scripts/train.py --epochs 10
+torchrun --nproc_per_node=2 scripts/train.py \
+  --data_mode real \
+  --zarr_path data/era5_subset.zarr \
+  --variables 2m_temperature volumetric_soil_water_layer_1 leaf_area_index_high_vegetation \
+  --epochs 10
 ```
 
 See [docs/DISTRIBUTED_TRAINING.md](docs/DISTRIBUTED_TRAINING.md) for multi-node setup.
@@ -259,7 +326,17 @@ its own Python interpreter and GIL. DataParallel uses threads that share
 one GIL, creating a bottleneck. DDP's gradient sync happens at the
 NCCL/GPU level, bypassing Python entirely.
 
-Results on A100 (single GPU, synthetic data):
+The training entry point supports two modes:
+
+- `--data_mode synthetic` for quick local smoke tests
+- `--data_mode real` for training on the Zarr store produced by the ERA5 pipeline
+
+Backend selection is automatic:
+
+- `nccl` on CUDA machines
+- `gloo` on CPU-only machines, which is useful for local smoke tests and CI-style validation
+
+Example result on A100 using synthetic data:
 
 ```
 Epoch   1/10 | Train Loss: 0.03965 | Val Loss: 0.01188 | Time: 2.7s
@@ -283,24 +360,7 @@ Training complete. Best val loss: 0.01017
 
 The synthetic generator in `pipeline/data/synthetic.py` uses the more classical
 weather-forecasting variables (`z500`, `t850`, `u10`, `v10`), while the current
-real-data pipeline is focused on surface and land variables.
-
----
-
-## Background
-
-What the ConvLSTM is good at:
-
-- `Conv2d` layers learn local spatial structure such as fronts, gradients, and
-  terrain-linked patterns
-- recurrent state carries temporal information such as persistence and lagged response
-
-What it is not optimized for:
-
-- modern global weather models like FourCastNet and GraphCast generally scale
-  better to long-range, global circulation dynamics than ConvLSTM
-- ConvLSTM processes timesteps sequentially, which limits parallelism
-
+real-data training path is focused on surface and land variables.
 
 ---
 

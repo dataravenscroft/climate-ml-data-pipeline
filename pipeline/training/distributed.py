@@ -4,7 +4,7 @@ import torch
 import torch.distributed as dist
 
 
-def setup_distributed():
+def setup_distributed(backend: str | None = None):
     """Initialize the distributed process group.
 
     torchrun sets LOCAL_RANK, RANK, WORLD_SIZE as environment variables.
@@ -12,10 +12,12 @@ def setup_distributed():
     each backward pass. init_process_group is a collective — all processes
     must call it before any can proceed.
     """
-    dist.init_process_group(backend="nccl")
+    backend = backend or ("nccl" if torch.cuda.is_available() else "gloo")
+    dist.init_process_group(backend=backend)
     local_rank = int(os.environ["LOCAL_RANK"])
-    torch.cuda.set_device(local_rank)
-    return local_rank
+    if backend == "nccl":
+        torch.cuda.set_device(local_rank)
+    return local_rank, backend
 
 
 def cleanup_distributed():
