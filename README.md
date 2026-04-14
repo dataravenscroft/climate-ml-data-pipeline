@@ -1,7 +1,7 @@
 # Climate ML Data Pipeline for ERA5 Forecasting
 
-Climate-focused machine learning project built to demonstrate the full path from
-Earth-system data ingestion to spatiotemporal model training. The repo combines:
+Climate ML project covering the path from Earth-system data ingestion to
+spatiotemporal model training. The repo combines:
 
 - ERA5 reanalysis preprocessing with `xarray`, `zarr`, `dask`, and `xESMF`
 - PyTorch ConvLSTM modeling for next-step forecasting on gridded climate fields
@@ -11,12 +11,12 @@ Earth-system data ingestion to spatiotemporal model training. The repo combines:
 
 ## Project Summary
 
-This project ingests public ERA5 data from the ARCO archive, subsets and rechunks
-it into ML-friendly Zarr stores, and trains a ConvLSTM to predict the next
-atmospheric state from a sliding window of prior timesteps.
+This project ingests public ERA5 data from the ARCO archive, subsets and
+rechunks it into ML-ready Zarr stores, and trains a ConvLSTM to predict the
+next atmospheric state from a sliding window of prior timesteps.
 
-The current implemented real-data workflow uses a mixed forecasting and
-land-surface variable set over a fixed CONUS domain and two-week time window:
+The current real-data workflow uses a mixed forecasting and land-surface
+variable set over a fixed CONUS domain and two-week time window:
 
 - `2m_temperature`
 - `10m_u_component_of_wind`
@@ -28,11 +28,9 @@ land-surface variable set over a fixed CONUS domain and two-week time window:
 - `surface_solar_radiation_downwards`
 - `total_sky_direct_solar_radiation_at_surface`
 
-Those variables are written to a local Zarr store, regridded to 1 degree, and
-fed into a PyTorch `Dataset` that supports distributed training.
-
-The repo also includes a synthetic ERA5-like generator for fast offline testing,
-which makes it easy to validate the training stack before running on real data.
+Those variables are written to a local Zarr store, optionally regridded, and fed
+into a PyTorch `Dataset` that supports distributed training. The repo also
+includes a synthetic ERA5-like generator for fast offline testing.
 
 ## Why This Matters
 
@@ -47,9 +45,9 @@ training loops. This project is designed to show fluency across that full stack:
 
 ## NVIDIA Earth-2 Alignment
 
-This repo is being developed as an Earth-2-aligned portfolio project. The goal
-is to demonstrate the parts of the workflow that map well onto NVIDIA's weather
-and climate AI stack:
+This repo is being developed as an Earth-2-aligned portfolio project. It is
+meant to demonstrate the parts of the workflow that map well onto NVIDIA's
+weather and climate AI stack:
 
 - ERA5 ingestion and ML-ready preprocessing, which mirrors the data curation
   stage needed before large-scale forecasting or diagnostic modeling
@@ -60,7 +58,7 @@ and climate AI stack:
 - regional diagnostic outputs, which connect forecasting infrastructure to
   decision-useful climate and resilience applications
 
-Planned next steps for stronger Earth-2 alignment:
+Planned next steps:
 
 - add a PhysicsNeMo-aligned training recipe or dataset/config layout
 - add an Earth2Studio inference demo with a pretrained weather model
@@ -80,11 +78,11 @@ Planned next steps for stronger Earth-2 alignment:
 
 ## Current Status
 
-- Implemented: ERA5 ingestion, subsetting, local Zarr writing, regridding, summary stats, PyTorch dataset, ConvLSTM model, DDP training utilities
+- Implemented: ERA5 ingestion, local Zarr writing, regridding, summary stats, PyTorch dataset, ConvLSTM model, DDP training utilities
 - Implemented: training on both synthetic ERA5-like data and the real local ERA5 Zarr store
-- Implemented: offline forecast evaluation script with skill metrics and visualization outputs
-- Current real-data scope: CONUS subset, 9 variables, 2-week sample window
-- Next step: extend the real-data training path to larger temporal coverage and richer benchmark variable sets
+- Implemented: offline forecast evaluation with skill metrics and saved plots
+- Current scope: CONUS subset, 9 variables, 2-week sample window
+- Next step: extend the real-data workflow to larger temporal coverage and richer benchmark variable sets
 
 ---
 
@@ -107,7 +105,6 @@ climate-ml-data-pipeline/
 │       └── metrics.py           # forecast skill metrics
 ├── scripts/
 │   ├── run_pipeline.py                        # entry point: python scripts/run_pipeline.py
-│   ├── pipeline_2_arcgridAML_currenttooling.py  # wrapper for water stress demo
 │   ├── train.py                               # entry point: torchrun scripts/train.py
 │   └── evaluate_forecast.py                  # checkpoint evaluation + plots
 ├── notebooks/
@@ -149,7 +146,8 @@ DDP training with torchrun
 ## ConvLSTM Forward Pass
 
 The ConvLSTM implementation is generic over channel count and grid size.
-The default synthetic setup uses:
+In this repo, the default synthetic training setup uses an input with shape
+`(B, T=6, C=4, H=32, W=64)`.
 
 The core architectural insight: **the T dimension exists only in the input tensor, then disappears.**
 
@@ -222,9 +220,9 @@ Output: (B, C=4, H=32, W=64)        ← predicted next timestep
 
 **Why ConvLSTM over standard LSTM:** Standard LSTM flattens the weather
 grid into a vector, destroying spatial relationships. ConvLSTM replaces
-matrix multiplications in the LSTM gates with 3×3 convolutions — the
-grid stays intact throughout, so the model learns spatial processes, e.g. that pressure gradients
-move eastward and cold fronts have characteristic spatial shapes.
+matrix multiplications in the LSTM gates with 3×3 convolutions, so the
+grid stays intact throughout and the model can learn spatial processes
+such as moving pressure gradients and frontal structure.
 
 ---
 
@@ -252,7 +250,7 @@ This will:
 - Subset to CONUS, 2 weeks of hourly data
 - Select temperature, wind, upper-air, land-surface, and solar-radiation variables
 - Write local zarr with ML-optimized chunking (`{time: 1, lat: -1, lon: -1}`)
-- Regrid to 1° using xESMF bilinear interpolation #Unable to install 
+- Optionally regrid to 1° using xESMF bilinear interpolation
 - Compute Dask parallel temporal statistics
 - Connect the zarr store to a PyTorch DataLoader
 
@@ -294,13 +292,7 @@ This will:
 - Exercise the training stack without needing remote ERA5 access or a local Zarr store
 - Use a 4-channel synthetic benchmark dataset with realistic-looking spatiotemporal structure
 
-### 5. Run the water stress demo
-
-```bash
-python scripts/pipeline_2_arcgridAML_currenttooling.py
-```
-
-### 6. Evaluate forecast skill and save plots
+### 5. Evaluate forecast skill and save plots
 
 ```bash
 python scripts/evaluate_forecast.py \
@@ -325,7 +317,7 @@ This writes:
 - `viz/evaluation/acc_by_variable.png`
 - `viz/evaluation/sample_forecast_comparison.png`
 
-### 7. Train on multiple GPUs
+### 6. Train on multiple GPUs
 
 ```bash
 torchrun --nproc_per_node=2 scripts/train.py \
@@ -350,7 +342,7 @@ See [docs/DISTRIBUTED_TRAINING.md](docs/DISTRIBUTED_TRAINING.md) for multi-node 
 
 ## Climate Data Pipeline
 
-The pipeline implements the standard Earth-2 / Pangeo toolchain:
+The pipeline uses a standard Earth-2 / Pangeo-style toolchain:
 
 **xarray** — labelled N-D arrays with CF-convention coordinates.
 Supports `sel` / `isel` by coordinate value, weighted spatial means,
@@ -360,10 +352,9 @@ and direct zarr I/O.
 `{time: 1, lat: -1, lon: -1}` optimize for ML sample access.
 Zarr v3 default zstd compression achieves ~3–5x ratio on float32 atmospheric fields.
 
-**xESMF** — conservative and bilinear regridding between grid
-resolutions. Conservative method preserves area-averaged quantities
-(critical for precipitation, flux fields). Used to move between ERA5
-native 0.25°, FourCastNet 0.25°, and ClimaX 5.625° grids. 
+**xESMF** — conservative and bilinear regridding between grids.
+Conservative methods preserve area-averaged quantities such as precipitation
+and fluxes. Bilinear interpolation is used here for state variables.
 
 **Dask** — lazy parallel computation for terabyte-scale datasets.
 Builds task graphs without loading data, executes chunk-by-chunk.
@@ -412,7 +403,7 @@ Backend selection is automatic:
 - `nccl` on CUDA machines
 - `gloo` on CPU-only machines, which is useful for local smoke tests and CI-style validation
 
-Example result on A100 using synthetic data:
+Example synthetic-data result on A100:
 
 ```
 Epoch   1/10 | Train Loss: 0.03965 | Val Loss: 0.01188 | Time: 2.7s
@@ -459,7 +450,7 @@ and radiation variables.
 
 ## Other Work
 
-Companion NVIDIA-focused portfolio work is currently in progress:
+Companion NVIDIA-focused portfolio work is in progress:
 
 - Earth-2 / PhysicsNeMo weather recipes — a separate project focused on
   PhysicsNeMo-style training recipes, Earth2Studio inference workflows, and
