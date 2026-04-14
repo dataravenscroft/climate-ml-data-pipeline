@@ -102,6 +102,7 @@ outputs/
 figures/
 viz/evaluation_real9/
 viz/evaluation_smoke/
+scripts/review/
 *.pdf
 *.png
 *.jpg
