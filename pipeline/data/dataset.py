@@ -99,9 +99,10 @@ def build_dataloader(zarr_path: str) -> DataLoader:
     dataset = ERA5Dataset(
         zarr_path=zarr_path,
         variables=[
-            "2m_temperature",
-            "volumetric_soil_water_layer_1",
-            "leaf_area_index_high_vegetation",
+            "geopotential_500",
+            "temperature_850",
+            "10m_u_component_of_wind",
+            "10m_v_component_of_wind",
         ],
         seq_len=6,
     )

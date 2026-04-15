@@ -15,20 +15,15 @@ ARCO_ERA5_PATH = (
 )
 
 VARIABLES = [
-    "2m_temperature",
+    "geopotential_500",
+    "temperature_850",
     "10m_u_component_of_wind",
     "10m_v_component_of_wind",
-    "temperature_850",
-    "geopotential_500",
-    "volumetric_soil_water_layer_1",
-    "leaf_area_index_high_vegetation",
-    "surface_solar_radiation_downwards",
-    "total_sky_direct_solar_radiation_at_surface",
 ]
 
 PRESSURE_LEVEL_VARIABLES = {
-    "temperature_850": ("temperature", 850),
     "geopotential_500": ("geopotential", 500),
+    "temperature_850":  ("temperature", 850),
 }
 
 TIME_START = "2020-06-01"
@@ -107,10 +102,6 @@ def open_and_subset(client) -> xr.Dataset:
     # Rename to lat/lon — xESMF and most ML libraries expect these names
     subset = subset.rename({"latitude": "lat", "longitude": "lon"})
 
-    # Derived variable — stays lazy (no .compute() yet)
-    subset["t2m_celsius"] = subset["2m_temperature"] - 273.15
-    subset["t2m_celsius"].attrs = {"long_name": "2m temperature", "units": "degC"}
-
     print(f"  Subset dims: {dict(subset.sizes)}")
     _print_memory_estimate(subset)
 
@@ -138,18 +129,18 @@ def compute_stats(ds_local: xr.Dataset) -> None:
     """
     print("\n── Step 4: Dask parallel stats ──")
 
-    temp_mean = (ds_local["2m_temperature"] - 273.15).mean("time")
-    soil_std  = ds_local["volumetric_soil_water_layer_1"].std("time")
-    lai_max   = ds_local["leaf_area_index_high_vegetation"].max("time")
+    z500_std  = ds_local["geopotential_500"].std("time")
+    t850_mean = ds_local["temperature_850"].mean("time")
+    u10_mean  = ds_local["10m_u_component_of_wind"].mean("time")
 
     print("  Lazy graphs built — computing now ...")
     t0 = time.time()
-    temp_mean_val, soil_std_val, lai_max_val = dask.compute(
-        temp_mean, soil_std, lai_max
+    z500_std_val, t850_mean_val, u10_mean_val = dask.compute(
+        z500_std, t850_mean, u10_mean
     )
     elapsed = time.time() - t0
 
     print(f"  Computed in {elapsed:.2f}s")
-    print(f"  Mean 2m temp (°C):          {float(temp_mean_val.mean()):.2f}")
-    print(f"  Soil moisture temporal std:  {float(soil_std_val.mean()):.4f}")
-    print(f"  LAI high veg max:            {float(lai_max_val.mean()):.4f}")
+    print(f"  Z500 temporal std:      {float(z500_std_val.mean()):.2f}")
+    print(f"  Mean T850 (K):          {float(t850_mean_val.mean()):.2f}")
+    print(f"  Mean U10 (m/s):         {float(u10_mean_val.mean()):.2f}")

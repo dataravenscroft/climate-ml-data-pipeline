@@ -15,18 +15,13 @@ This project ingests public ERA5 data from the ARCO archive, subsets and
 rechunks it into ML-ready Zarr stores, and trains a ConvLSTM to predict the
 next atmospheric state from a sliding window of prior timesteps.
 
-The current real-data workflow uses a mixed forecasting and land-surface
-variable set over a fixed CONUS domain and two-week time window:
+The current real-data workflow uses the standard NWP benchmark variable set
+over a fixed CONUS domain and two-week time window:
 
-- `2m_temperature`
+- `geopotential_500`
+- `temperature_850`
 - `10m_u_component_of_wind`
 - `10m_v_component_of_wind`
-- `temperature_850`
-- `geopotential_500`
-- `volumetric_soil_water_layer_1`
-- `leaf_area_index_high_vegetation`
-- `surface_solar_radiation_downwards`
-- `total_sky_direct_solar_radiation_at_surface`
 
 Those variables are written to a local Zarr store, optionally regridded, and fed
 into a PyTorch `Dataset` that supports distributed training. The repo also
@@ -81,7 +76,7 @@ Planned next steps:
 - Implemented: ERA5 ingestion, local Zarr writing, regridding, summary stats, PyTorch dataset, ConvLSTM model, DDP training utilities
 - Implemented: training on both synthetic ERA5-like data and the real local ERA5 Zarr store
 - Implemented: offline forecast evaluation with skill metrics and saved plots
-- Current scope: CONUS subset, 9 variables, 2-week sample window
+- Current scope: CONUS subset, 4 variables (Z500, T850, U10, V10), 2-week sample window
 - Next step: extend the real-data workflow to larger temporal coverage and richer benchmark variable sets
 
 ---
@@ -248,7 +243,7 @@ python scripts/run_pipeline.py
 This will:
 - Open ARCO ERA5 lazily from public GCS (no credentials needed)
 - Subset to CONUS, 2 weeks of hourly data
-- Select temperature, wind, upper-air, land-surface, and solar-radiation variables
+- Select Z500, T850, U10, V10 — the standard NWP benchmark variable set
 - Write local zarr with ML-optimized chunking (`{time: 1, lat: -1, lon: -1}`)
 - Optionally regrid to 1° using xESMF bilinear interpolation
 - Compute Dask parallel temporal statistics
@@ -261,15 +256,10 @@ torchrun --nproc_per_node=1 scripts/train.py \
   --data_mode real \
   --zarr_path data/era5_subset.zarr \
   --variables \
-    2m_temperature \
+    geopotential_500 \
+    temperature_850 \
     10m_u_component_of_wind \
     10m_v_component_of_wind \
-    temperature_850 \
-    geopotential_500 \
-    volumetric_soil_water_layer_1 \
-    leaf_area_index_high_vegetation \
-    surface_solar_radiation_downwards \
-    total_sky_direct_solar_radiation_at_surface \
   --epochs 10
 ```
 
@@ -300,15 +290,10 @@ python scripts/evaluate_forecast.py \
   --data_mode real \
   --zarr_path data/era5_subset.zarr \
   --variables \
-    2m_temperature \
-    10m_u_component_of_wind \
-    10m_v_component_of_wind \
-    temperature_850 \
     geopotential_500 \
-    volumetric_soil_water_layer_1 \
-    leaf_area_index_high_vegetation \
-    surface_solar_radiation_downwards \
-    total_sky_direct_solar_radiation_at_surface
+    temperature_850 \
+    10m_u_component_of_wind \
+    10m_v_component_of_wind
 ```
 
 This writes:
@@ -324,15 +309,10 @@ torchrun --nproc_per_node=2 scripts/train.py \
   --data_mode real \
   --zarr_path data/era5_subset.zarr \
   --variables \
-    2m_temperature \
+    geopotential_500 \
+    temperature_850 \
     10m_u_component_of_wind \
     10m_v_component_of_wind \
-    temperature_850 \
-    geopotential_500 \
-    volumetric_soil_water_layer_1 \
-    leaf_area_index_high_vegetation \
-    surface_solar_radiation_downwards \
-    total_sky_direct_solar_radiation_at_surface \
   --epochs 10
 ```
 
@@ -418,23 +398,16 @@ Training complete. Best val loss: 0.01017
 
 ## Variables
 
-| Variable | Description | Units | Used Where |
-|---|---|---|---|
-| `2m_temperature` | Near-surface air temperature | K | Real ERA5 preprocessing |
-| `10m_u_component_of_wind` | Eastward 10 m wind | m s-1 | Real ERA5 preprocessing |
-| `10m_v_component_of_wind` | Northward 10 m wind | m s-1 | Real ERA5 preprocessing |
-| `temperature_850` | Air temperature at 850 hPa | K | Real ERA5 preprocessing |
-| `geopotential_500` | Geopotential at 500 hPa | m2 s-2 | Real ERA5 preprocessing |
-| `volumetric_soil_water_layer_1` | Top-layer soil moisture | m3 m-3 | Real ERA5 preprocessing |
-| `leaf_area_index_high_vegetation` | High-vegetation leaf area index | m2 m-2 | Real ERA5 preprocessing |
-| `surface_solar_radiation_downwards` | Total downward shortwave radiation at surface | J m-2 | Real ERA5 preprocessing |
-| `total_sky_direct_solar_radiation_at_surface` | Direct-beam shortwave radiation at surface | J m-2 | Real ERA5 preprocessing |
-| `z500`, `t850`, `u10`, `v10` | Synthetic ERA5-like benchmark variables | mixed | Synthetic data generator |
+| Variable | Description | Units |
+|---|---|---|
+| `geopotential_500` | Geopotential at 500 hPa — large-scale circulation, storm steering | m2 s-2 |
+| `temperature_850` | Air temperature at 850 hPa — lower-troposphere thermal structure | K |
+| `10m_u_component_of_wind` | Eastward 10 m wind | m s-1 |
+| `10m_v_component_of_wind` | Northward 10 m wind | m s-1 |
 
-The synthetic generator in `pipeline/data/synthetic.py` uses the more classical
-weather-forecasting variables (`z500`, `t850`, `u10`, `v10`), while the current
-real-data training path uses a broader mix of near-surface, upper-air, land,
-and radiation variables.
+This is the standard NWP benchmark variable set used by WeatherBench2, GraphCast,
+and Pangu-Weather. The synthetic generator in `pipeline/data/synthetic.py` uses
+the same variables (`z500`, `t850`, `u10`, `v10`).
 
 ---
 

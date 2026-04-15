@@ -39,8 +39,8 @@ def regrid(
     print(f"  Target: {len(target_grid.lat)} × {len(target_grid.lon)} (1.0°)")
 
     state_vars = [
-        "2m_temperature", "volumetric_soil_water_layer_1",
-        "leaf_area_index_high_vegetation", "t2m_celsius",
+        "geopotential_500", "temperature_850",
+        "10m_u_component_of_wind", "10m_v_component_of_wind",
     ]
     state_vars = [v for v in state_vars if v in ds_local]
 
